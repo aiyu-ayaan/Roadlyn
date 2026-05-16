@@ -198,6 +198,8 @@ export interface RoadmapGenerateRequest {
   experienceLevel?: string;
   goal?: string;
   weeklyHours?: number;
+  moduleCount?: number;
+  courseDepth?: 'standard' | 'full-length' | 'masterclass';
   generationOptions?: {
     liveSearch?: boolean;
     youtubeVideos?: boolean;

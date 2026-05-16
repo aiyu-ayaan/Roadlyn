@@ -20,6 +20,8 @@ const generationSchema = z.object({
   experienceLevel: z.string().min(1),
   goal: z.string().min(2),
   weeklyHours: z.coerce.number().min(1).max(80),
+  moduleCount: z.coerce.number().int().min(4).max(6),
+  courseDepth: z.enum(['standard', 'full-length', 'masterclass']),
   generationOptions: z.object({
     liveSearch: z.boolean(),
     youtubeVideos: z.boolean(),
@@ -48,6 +50,8 @@ export function RoadmapGenerator() {
       experienceLevel: 'beginner',
       goal: 'Become job-ready with portfolio projects',
       weeklyHours: 8,
+      moduleCount: 6,
+      courseDepth: 'masterclass',
       generationOptions: {
         liveSearch: true,
         youtubeVideos: true,
@@ -111,6 +115,31 @@ export function RoadmapGenerator() {
           <Field label="Weekly hours" error={form.formState.errors.weeklyHours?.message}>
             <Input type="number" {...form.register('weeklyHours')} />
           </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Course modules" error={form.formState.errors.moduleCount?.message}>
+              <Select
+                value={String(form.watch('moduleCount'))}
+                onValueChange={(value) => form.setValue('moduleCount', Number(value))}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[4, 5, 6].map((count) => (
+                    <SelectItem key={count} value={String(count)}>{count} full modules</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Course depth" error={form.formState.errors.courseDepth?.message}>
+              <Select value={form.watch('courseDepth')} onValueChange={(value) => form.setValue('courseDepth', value as GenerationValues['courseDepth'])}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="masterclass">Masterclass</SelectItem>
+                  <SelectItem value="full-length">Full-length</SelectItem>
+                  <SelectItem value="standard">Standard</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
           <div>
             <p className="text-sm font-medium">Generation tasks</p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
