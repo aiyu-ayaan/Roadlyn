@@ -5,8 +5,8 @@ export default function GenerateRoadmapPage() {
   return (
     <div>
       <PageHeader
-        title="Generate roadmap"
-        description="Create a learning plan using dynamic providers and models from the AI gateway."
+        title="Create AI course"
+        description="Generate a Udemy-style course and roadmap from live web research, docs, videos, repos, and current best practices."
       />
       <RoadmapGenerator />
     </div>
