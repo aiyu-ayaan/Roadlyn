@@ -9,7 +9,6 @@ import {
   ChevronDown,
   ChevronRight,
   Circle,
-  Clock3,
   Code2,
   ExternalLink,
   FileText,
@@ -17,12 +16,10 @@ import {
   GraduationCap,
   LayoutPanelLeft,
   Loader2,
-  Menu,
   PlayCircle,
   Sparkles,
   Target,
   Trash2,
-  Video,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '@/components/layout/page-header';
@@ -224,11 +221,16 @@ function CourseScreen({
     saveCompleted([...completed, completionKey]);
   };
   const openResource = (resource: CourseResource) => {
-    const phaseIndex = course.phases?.findIndex((p) => 
-      phaseResources(p).some((r) => r.url === resource.url)
+    const phaseIndex = course.phases?.findIndex((p) =>
+      phaseResources(p).some((r) => normalizeResourceUrl(r.url) === normalizeResourceUrl(resource.url))
     ) ?? -1;
     if (phaseIndex >= 0) {
+      const targetItems = buildCourseItems(course.phases?.[phaseIndex]);
+      const itemIndex = targetItems.findIndex((item) =>
+        item.type === 'resource' && normalizeResourceUrl(item.resource.url) === normalizeResourceUrl(resource.url)
+      );
       setActivePhaseIndex(phaseIndex);
+      setActiveItemIndex(Math.max(0, itemIndex));
       setExpandedPhases(new Set([...expandedPhases, phaseIndex]));
     }
   };
@@ -295,7 +297,6 @@ function CourseScreen({
                   course={course}
                   phase={activePhase}
                   item={activeItem}
-                  onEndReached={markPhaseComplete}
                 />
                 <div className="p-6 border-t border-white/10 bg-card shrink-0">
                   <CourseOverview course={course} resources={resources} onOpenResource={openResource} />
@@ -379,12 +380,10 @@ function CoursePlayer({
   course,
   phase,
   item,
-  onEndReached,
 }: {
   course: GeneratedCourse;
   phase?: CoursePhase;
   item?: CourseItem;
-  onEndReached: () => void;
 }) {
   const embedUrl = item?.type === 'resource' ? getEmbedUrl(item.resource.url) : null;
   const isVideo = item?.type === 'resource' && item.resource.kind === 'youtube';
@@ -396,17 +395,14 @@ function CoursePlayer({
           {embedUrl ? (
             <div className="relative w-full border-b border-white/10 bg-black">
               <div className="absolute right-4 top-4 z-10 flex gap-2">
-                <Button size="sm" variant="secondary" className="bg-black/50 text-xs backdrop-blur-md hover:bg-black/80 border-white/10" asChild>
-                  <a href={item.resource.url} target="_blank" rel="noreferrer">
-                    Open in new tab <ArrowUpRight className="ml-1 size-3" />
-                  </a>
-                </Button>
+                <OpenUrlButton url={item.resource.url} label="Open in new tab" size="sm" />
               </div>
               <iframe
                 title={item.resource.title}
                 src={embedUrl}
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                 allowFullScreen
+                referrerPolicy="strict-origin-when-cross-origin"
                 className={`w-full ${isVideo ? 'aspect-video' : 'h-[80vh] min-h-[600px] bg-white'}`}
               />
             </div>
@@ -466,12 +462,7 @@ function ResourcePreview({ resource, phase }: { resource: CourseResource; phase?
               <h3 className="mt-4 text-3xl font-semibold">{resource.title}</h3>
               <p className="mt-2 text-sm text-muted-foreground">{resource.source}</p>
             </div>
-            <Button variant="outline" asChild>
-              <a href={resource.url} target="_blank" rel="noreferrer">
-                <ArrowUpRight />
-                Open original
-              </a>
-            </Button>
+            <OpenUrlButton url={resource.url} label="Open original" variant="outline" />
           </div>
           <p className="mt-5 text-sm leading-7 text-muted-foreground">
             This site may block embedded loading, so Roadlyn keeps the learning flow inside the course and gives you the
@@ -518,6 +509,37 @@ function ResourceStudyNotes({ resource, phase }: { resource: CourseResource; pha
         </div>
       </div>
     </div>
+  );
+}
+
+function OpenUrlButton({
+  url,
+  label,
+  variant = 'secondary',
+  size = 'md',
+}: {
+  url: string;
+  label: string;
+  variant?: 'default' | 'secondary' | 'ghost' | 'outline' | 'destructive';
+  size?: 'sm' | 'md' | 'lg' | 'icon';
+}) {
+  const openUrl = () => {
+    const normalized = normalizeExternalUrl(url);
+    if (!normalized) return;
+    window.open(normalized, '_blank', 'noopener,noreferrer');
+  };
+
+  return (
+    <Button
+      type="button"
+      variant={variant}
+      size={size}
+      className={size === 'sm' ? 'border-white/10 bg-black/50 text-xs backdrop-blur-md hover:bg-black/80' : undefined}
+      onClick={openUrl}
+    >
+      {label}
+      <ArrowUpRight className={size === 'sm' ? 'ml-1 size-3' : undefined} />
+    </Button>
   );
 }
 
@@ -781,23 +803,59 @@ function phaseResources(phase: CoursePhase): CourseResource[] {
 function getEmbedUrl(url: string) {
   const videoId = getYouTubeVideoId(url);
   if (videoId) {
-    return `https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1`;
+    return `https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1&playsinline=1`;
   }
-  return url;
+
+  return null;
 }
 
 function getYouTubeVideoId(url: string) {
   try {
-    const parsed = new URL(url);
-    if (parsed.hostname.includes('youtu.be')) {
-      return parsed.pathname.replace('/', '');
+    const parsed = new URL(normalizeExternalUrl(url) ?? url);
+    const host = parsed.hostname.replace(/^www\./, '').toLowerCase();
+    const pathParts = parsed.pathname.split('/').filter(Boolean);
+
+    if (host === 'youtu.be') {
+      return pathParts[0] ?? null;
     }
-    if (parsed.hostname.includes('youtube.com')) {
-      return parsed.searchParams.get('v') ?? parsed.pathname.match(/\/shorts\/([^/?]+)/)?.[1] ?? null;
+
+    if (host.endsWith('youtube.com')) {
+      return (
+        parsed.searchParams.get('v') ??
+        readYouTubePathId(pathParts, 'embed') ??
+        readYouTubePathId(pathParts, 'shorts') ??
+        readYouTubePathId(pathParts, 'live') ??
+        readYouTubePathId(pathParts, 'v')
+      );
     }
   } catch {
     return null;
   }
 
   return null;
+}
+
+function readYouTubePathId(pathParts: string[], segment: string) {
+  const index = pathParts.indexOf(segment);
+  return index >= 0 ? pathParts[index + 1] ?? null : null;
+}
+
+function normalizeExternalUrl(url: string) {
+  const trimmed = url.trim();
+
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (/^\/\//.test(trimmed)) return `https:${trimmed}`;
+
+  return `https://${trimmed}`;
+}
+
+function normalizeResourceUrl(url: string) {
+  try {
+    const parsed = new URL(normalizeExternalUrl(url) ?? url);
+    parsed.hash = '';
+    return parsed.toString().replace(/\/$/, '');
+  } catch {
+    return url.trim();
+  }
 }
