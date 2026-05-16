@@ -31,6 +31,12 @@ const generateSchema = z.object({
 
 type GenerateInput = z.infer<typeof generateSchema>;
 type AIGenerateResult = Awaited<ReturnType<AIGatewayService['generateText']>>;
+type ResourceKind = ResearchResource['kind'];
+
+interface PhaseResourceState {
+  usedKeys: Set<string>;
+  cursors: Record<ResourceKind, number>;
+}
 
 interface AgentCourseBundle {
   curriculum: unknown;
@@ -628,6 +634,7 @@ function buildCurriculumAgentPrompt(
       'Use ONLY URLs from liveResearchResources. Do not invent links.',
       'Every module should include at least one youtubeVideos item when YouTube resources exist in liveResearchResources.',
       'Prefer YouTube URLs that can be embedded, official docs, GitHub repos with practical code, and useful articles.',
+      'Do not copy Phase 1 resources into Phase 2 or later modules. Resource URLs must be unique across the whole course unless there are not enough live resources.',
       'Avoid repeating the same lesson notes across modules. Each module must teach a distinct part of the topic.',
       'Return strict JSON only.',
     ],
@@ -723,8 +730,9 @@ function normalizeGeneratedCourse(
     return fallback;
   }
 
+  const resourceState = createPhaseResourceState();
   const phases = recordArray(record.phases)
-    .map((phase, index) => normalizePhase(phase, index, input.topic, resources))
+    .map((phase, index) => normalizePhase(phase, index, input.topic, resources, resourceState))
     .filter(Boolean)
     .slice(0, input.moduleCount);
 
@@ -760,15 +768,17 @@ function normalizePhase(
   index: number,
   topic: string,
   resources: ResearchResource[],
+  resourceState: PhaseResourceState,
 ) {
+  const phaseFallbackResources = selectFallbackPhaseResources(resources, resourceState, false);
   const fallback = buildFallbackPhase(
     `Module ${index + 1}: ${topic} Mastery`,
     `A detailed module for building practical ${topic} capability.`,
     index < 1 ? 'beginner' : index < 4 ? 'intermediate' : 'advanced',
-    resources.filter((resource) => resource.kind === 'officialDocs').slice(0, 4),
-    resources.filter((resource) => resource.kind === 'youtube').slice(0, 4),
-    resources.filter((resource) => resource.kind === 'github').slice(0, 4),
-    resources.filter((resource) => ['article', 'course', 'community'].includes(resource.kind)).slice(0, 6),
+    phaseFallbackResources.officialDocs,
+    phaseFallbackResources.youtubeVideos,
+    phaseFallbackResources.githubRepos,
+    phaseFallbackResources.tutorials,
   );
   const officialDocs = recordArray(phase.officialDocs).length ? phase.officialDocs : fallback.officialDocs;
   const youtubeVideos = recordArray(phase.youtubeVideos).length ? phase.youtubeVideos : fallback.youtubeVideos;
@@ -781,10 +791,10 @@ function normalizePhase(
     estimatedDuration: readString(phase.estimatedDuration, fallback.estimatedDuration),
     prerequisites: stringArray(phase.prerequisites, fallback.prerequisites).slice(0, 12),
     learningObjectives: stringArray(phase.learningObjectives, fallback.learningObjectives).slice(0, 12),
-    tutorials: ensureTutorials(tutorials, resources).slice(0, 6),
-    youtubeVideos: ensureYouTubeVideos(youtubeVideos, resources).slice(0, 4),
-    officialDocs: ensureOfficialDocs(officialDocs, resources).slice(0, 4),
-    githubRepos: ensureGithubRepos(githubRepos, resources).slice(0, 4),
+    tutorials: ensureTutorials(tutorials, resources, resourceState, 6),
+    youtubeVideos: ensureYouTubeVideos(youtubeVideos, resources, resourceState, 4),
+    officialDocs: ensureOfficialDocs(officialDocs, resources, resourceState, 4),
+    githubRepos: ensureGithubRepos(githubRepos, resources, resourceState, 4),
     exercises: stringArray(phase.exercises, fallback.exercises).slice(0, 16),
     miniProjects: stringArray(phase.miniProjects, fallback.miniProjects).slice(0, 8),
     quizzes: recordArray(phase.quizzes).length ? phase.quizzes : fallback.quizzes,
@@ -797,11 +807,11 @@ function normalizePhase(
 function ensureYouTubeVideos(
   videos: unknown,
   resources: ResearchResource[],
+  state: PhaseResourceState,
+  limit: number,
 ) {
-  const existing = recordArray(videos);
-  const usedUrls = new Set(existing.map((item) => readString(item.url, '')));
-  const injected = resources
-    .filter((resource) => resource.kind === 'youtube' && !usedUrls.has(resource.url))
+  const existing = uniqueExistingRecords(recordArray(videos), state, limit);
+  const injected = takeUnusedResources(resources, ['youtube'], state, limit - existing.length)
     .map((resource) => ({
       title: resource.title,
       channelName: resource.channelName,
@@ -810,17 +820,17 @@ function ensureYouTubeVideos(
       whyRecommended: resource.summary ?? resource.freshnessRelevance,
     }));
 
-  return [...existing, ...injected];
+  return [...existing, ...injected].slice(0, limit);
 }
 
 function ensureOfficialDocs(
   docs: unknown,
   resources: ResearchResource[],
+  state: PhaseResourceState,
+  limit: number,
 ) {
-  const existing = recordArray(docs);
-  const usedUrls = new Set(existing.map((item) => readString(item.url, '')));
-  const injected = resources
-    .filter((resource) => resource.kind === 'officialDocs' && !usedUrls.has(resource.url))
+  const existing = uniqueExistingRecords(recordArray(docs), state, limit);
+  const injected = takeUnusedResources(resources, ['officialDocs'], state, limit - existing.length)
     .map((resource) => ({
       title: resource.title,
       source: resource.source,
@@ -828,17 +838,17 @@ function ensureOfficialDocs(
       summary: resource.summary ?? resource.freshnessRelevance,
     }));
 
-  return [...existing, ...injected];
+  return [...existing, ...injected].slice(0, limit);
 }
 
 function ensureGithubRepos(
   repos: unknown,
   resources: ResearchResource[],
+  state: PhaseResourceState,
+  limit: number,
 ) {
-  const existing = recordArray(repos);
-  const usedUrls = new Set(existing.map((item) => readString(item.url, '')));
-  const injected = resources
-    .filter((resource) => resource.kind === 'github' && !usedUrls.has(resource.url))
+  const existing = uniqueExistingRecords(recordArray(repos), state, limit);
+  const injected = takeUnusedResources(resources, ['github'], state, limit - existing.length)
     .map((resource) => ({
       repositoryName: resource.title,
       url: resource.url,
@@ -847,17 +857,17 @@ function ensureGithubRepos(
       projectRelevance: resource.freshnessRelevance,
     }));
 
-  return [...existing, ...injected];
+  return [...existing, ...injected].slice(0, limit);
 }
 
 function ensureTutorials(
   tutorials: unknown,
   resources: ResearchResource[],
+  state: PhaseResourceState,
+  limit: number,
 ) {
-  const existing = recordArray(tutorials);
-  const usedUrls = new Set(existing.map((item) => readString(item.url, '')));
-  const injected = resources
-    .filter((resource) => ['article', 'course', 'community'].includes(resource.kind) && !usedUrls.has(resource.url))
+  const existing = uniqueExistingRecords(recordArray(tutorials), state, limit);
+  const injected = takeUnusedResources(resources, ['article', 'course', 'community'], state, limit - existing.length)
     .map((resource) => ({
       title: resource.title,
       source: resource.source,
@@ -866,7 +876,133 @@ function ensureTutorials(
       freshnessRelevance: resource.freshnessRelevance,
     }));
 
-  return [...existing, ...injected];
+  return [...existing, ...injected].slice(0, limit);
+}
+
+function createPhaseResourceState(): PhaseResourceState {
+  return {
+    usedKeys: new Set<string>(),
+    cursors: {
+      officialDocs: 0,
+      youtube: 0,
+      github: 0,
+      article: 0,
+      course: 0,
+      community: 0,
+    },
+  };
+}
+
+function selectFallbackPhaseResources(
+  resources: ResearchResource[],
+  state: PhaseResourceState,
+  commitSelection = true,
+) {
+  const selectionState = commitSelection ? state : clonePhaseResourceState(state);
+
+  return {
+    officialDocs: takeUnusedResources(resources, ['officialDocs'], selectionState, 4),
+    youtubeVideos: takeUnusedResources(resources, ['youtube'], selectionState, 4),
+    githubRepos: takeUnusedResources(resources, ['github'], selectionState, 4),
+    tutorials: takeUnusedResources(resources, ['article', 'course', 'community'], selectionState, 6),
+  };
+}
+
+function clonePhaseResourceState(state: PhaseResourceState): PhaseResourceState {
+  return {
+    usedKeys: new Set(state.usedKeys),
+    cursors: { ...state.cursors },
+  };
+}
+
+function takeUnusedResources(
+  resources: ResearchResource[],
+  kinds: ResourceKind[],
+  state: PhaseResourceState,
+  limit: number,
+) {
+  if (limit <= 0) {
+    return [];
+  }
+
+  const selected: ResearchResource[] = [];
+
+  for (const kind of kinds) {
+    const matchingResources = resources.filter((resource) => resource.kind === kind);
+    let cursor = state.cursors[kind];
+
+    while (cursor < matchingResources.length && selected.length < limit) {
+      const resource = matchingResources[cursor];
+      const key = resourceKey(resource.url, resource.title);
+      cursor += 1;
+
+      if (!key || state.usedKeys.has(key)) {
+        continue;
+      }
+
+      state.usedKeys.add(key);
+      selected.push(resource);
+    }
+
+    state.cursors[kind] = cursor;
+
+    if (selected.length >= limit) {
+      break;
+    }
+  }
+
+  return selected;
+}
+
+function uniqueExistingRecords(
+  records: Record<string, unknown>[],
+  state: PhaseResourceState,
+  limit: number,
+) {
+  const selected: Record<string, unknown>[] = [];
+
+  for (const record of records) {
+    if (selected.length >= limit) {
+      break;
+    }
+
+    const title = readString(record.title, readString(record.repositoryName, ''));
+    const key = resourceKey(readString(record.url, ''), title);
+
+    if (!key || state.usedKeys.has(key)) {
+      continue;
+    }
+
+    state.usedKeys.add(key);
+    selected.push(record);
+  }
+
+  return selected;
+}
+
+function resourceKey(url: string, title: string) {
+  const normalizedUrl = normalizeResourceUrl(url);
+
+  if (normalizedUrl) {
+    return normalizedUrl;
+  }
+
+  return title.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function normalizeResourceUrl(url: string) {
+  if (!url.trim()) {
+    return '';
+  }
+
+  try {
+    const parsed = new URL(url);
+    parsed.hash = '';
+    parsed.search = '';
+    return parsed.toString().replace(/\/$/, '').toLowerCase();
+  } catch {
+    return url.trim().toLowerCase();
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -913,10 +1049,7 @@ function extractJson(text: string) {
 
 function buildFallbackCourse(input: GenerateInput, resources: ResearchResource[]) {
   const topic = input.topic;
-  const officialDocs = resources.filter((resource) => resource.kind === 'officialDocs').slice(0, 4);
-  const youtubeVideos = resources.filter((resource) => resource.kind === 'youtube').slice(0, 4);
-  const githubRepos = resources.filter((resource) => resource.kind === 'github').slice(0, 4);
-  const tutorials = resources.filter((resource) => ['article', 'course', 'community'].includes(resource.kind)).slice(0, 6);
+  const resourceState = createPhaseResourceState();
   const moduleTemplates = [
     ['Foundations And Mental Models', `Build the vocabulary, tooling, setup, and mental models needed to study ${topic} seriously.`, 'beginner'],
     ['Core Skills And Guided Implementation', `Turn the fundamentals into working ${topic} features through guided implementation and repetition.`, 'intermediate'],
@@ -942,9 +1075,19 @@ function buildFallbackCourse(input: GenerateInput, resources: ResearchResource[]
     ],
     phases: moduleTemplates
       .slice(0, input.moduleCount)
-      .map(([title, description, difficultyLevel]) =>
-        buildFallbackPhase(title, description, difficultyLevel, officialDocs, youtubeVideos, githubRepos, tutorials),
-      ),
+      .map(([title, description, difficultyLevel]) => {
+        const phaseResources = selectFallbackPhaseResources(resources, resourceState);
+
+        return buildFallbackPhase(
+          title,
+          description,
+          difficultyLevel,
+          phaseResources.officialDocs,
+          phaseResources.youtubeVideos,
+          phaseResources.githubRepos,
+          phaseResources.tutorials,
+        );
+      }),
     projects: [
       {
         title: `${topic} starter project`,
