@@ -16,7 +16,6 @@ export const mainNavItems = [
   { href: '/workspace', label: 'AI Workspace', icon: MessageSquare },
   { href: '/discover', label: 'Discover', icon: Compass },
   { href: '/progress', label: 'Progress', icon: TrendingUp },
-  { href: '/admin', label: 'Admin', icon: KeyRound },
   { href: '/settings', label: 'Settings', icon: Settings },
   { href: '/settings/profile', label: 'Profile', icon: User },
 ];
