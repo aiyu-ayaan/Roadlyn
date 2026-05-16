@@ -5,7 +5,6 @@ import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import { useProviders } from '@/hooks/use-ai';
 import { aiService } from '@/services/ai/ai-service';
 import { useAuthStore } from '@/stores/auth';
@@ -16,7 +15,6 @@ export default function AISettingsPage() {
   const [providerId, setProviderId] = useState('');
   const [fallbackProviderId, setFallbackProviderId] = useState('');
   const [modelId, setModelId] = useState('');
-  const [useOwnKeys, setUseOwnKeys] = useState(false);
   const models = useMemo(
     () => providers.data?.find((provider) => provider.id === providerId)?.models ?? [],
     [providerId, providers.data],
@@ -26,7 +24,7 @@ export default function AISettingsPage() {
     <div>
       <PageHeader
         title="AI preferences"
-        description="Set your default provider, model, BYOK mode, and fallback provider."
+        description="Set your default model experience. Provider API keys are configured centrally by admins."
       />
       <Card className="max-w-2xl space-y-4 p-5">
         <div className="rounded-md border border-border bg-secondary/40 p-3 text-sm">
@@ -57,10 +55,6 @@ export default function AISettingsPage() {
             ))}
           </SelectContent>
         </Select>
-        <label className="flex items-center justify-between rounded-md border border-border p-3 text-sm">
-          Use user-owned keys first
-          <Switch checked={useOwnKeys} onCheckedChange={setUseOwnKeys} />
-        </label>
         <Button
           disabled={!user?.id || !providerId || !modelId}
           onClick={async () => {
@@ -72,7 +66,6 @@ export default function AISettingsPage() {
               userId: user.id,
               providerId,
               fallbackProviderId: fallbackProviderId || undefined,
-              useOwnKeys,
             });
             await aiService.setDefaultModel({ userId: user.id, modelId });
           }}

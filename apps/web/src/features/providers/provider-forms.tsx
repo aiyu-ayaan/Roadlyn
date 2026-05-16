@@ -11,7 +11,6 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { useAddProviderKey, useCreateModel, useCreateProvider } from '@/hooks/use-ai';
-import { useAuthStore } from '@/stores/auth';
 import { AIProvider, AIProviderType } from '@/types';
 
 const providerTypes: AIProviderType[] = [
@@ -49,7 +48,6 @@ const keySchema = z.object({
 });
 
 export function ProviderForms({ providers }: { providers: AIProvider[] }) {
-  const user = useAuthStore((state) => state.user);
   const createProvider = useCreateProvider();
   const createModel = useCreateModel();
   const addKey = useAddProviderKey();
@@ -126,7 +124,7 @@ export function ProviderForms({ providers }: { providers: AIProvider[] }) {
         <form
           className="space-y-4"
           onSubmit={keyForm.handleSubmit(async (values) => {
-            await addKey.mutateAsync({ ...values, userId: user?.id });
+            await addKey.mutateAsync(values);
             keyForm.reset({ providerId: values.providerId, keyName: '', apiKey: '', isDefault: true });
           })}
         >

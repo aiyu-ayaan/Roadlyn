@@ -44,7 +44,6 @@ const keySchema = z.object({
   providerId: z.string(),
   apiKey: z.string().min(1),
   keyName: z.string().min(1),
-  userId: z.string().optional(),
   isDefault: z.boolean().default(false),
 });
 
@@ -52,7 +51,6 @@ const defaultProviderSchema = z.object({
   userId: z.string(),
   providerId: z.string(),
   fallbackProviderId: z.string().optional(),
-  useOwnKeys: z.boolean().default(false),
 });
 
 const defaultModelSchema = z.object({
@@ -63,7 +61,6 @@ const defaultModelSchema = z.object({
 const testProviderSchema = z.object({
   providerId: z.string(),
   modelId: z.string(),
-  userId: z.string().optional(),
 });
 
 const generateSchema = z.object({
@@ -215,7 +212,7 @@ export async function aiRoutes(fastify: FastifyInstance) {
       await fastify.db.providerAPIKey.updateMany({
         where: {
           providerId: input.providerId,
-          userId: input.userId ?? null,
+          userId: null,
         },
         data: { isDefault: false },
       });
@@ -224,7 +221,7 @@ export async function aiRoutes(fastify: FastifyInstance) {
     const key = await fastify.db.providerAPIKey.create({
       data: {
         providerId: input.providerId,
-        userId: input.userId,
+        userId: null,
         encryptedKey: encryptSecret(input.apiKey),
         keyName: input.keyName,
         isDefault: input.isDefault,
@@ -232,7 +229,6 @@ export async function aiRoutes(fastify: FastifyInstance) {
       select: {
         id: true,
         providerId: true,
-        userId: true,
         keyName: true,
         isDefault: true,
         isActive: true,
@@ -255,14 +251,16 @@ export async function aiRoutes(fastify: FastifyInstance) {
     },
   }, async (request) => {
     const query = z
-      .object({ providerId: z.string().optional(), userId: z.string().optional() })
+      .object({ providerId: z.string().optional() })
       .parse(request.query);
     const keys = await fastify.db.providerAPIKey.findMany({
-      where: query,
+      where: {
+        providerId: query.providerId,
+        userId: null,
+      },
       select: {
         id: true,
         providerId: true,
-        userId: true,
         keyName: true,
         isDefault: true,
         isActive: true,
@@ -307,13 +305,13 @@ export async function aiRoutes(fastify: FastifyInstance) {
       update: {
         defaultProviderId: input.providerId,
         fallbackProviderId: input.fallbackProviderId,
-        useOwnKeys: input.useOwnKeys,
+        useOwnKeys: false,
       },
       create: {
         userId: input.userId,
         defaultProviderId: input.providerId,
         fallbackProviderId: input.fallbackProviderId,
-        useOwnKeys: input.useOwnKeys,
+        useOwnKeys: false,
       },
     });
 
@@ -368,7 +366,7 @@ export async function aiRoutes(fastify: FastifyInstance) {
       await fastify.db.providerAPIKey.updateMany({
         where: {
           providerId: input.providerId,
-          userId: input.userId ?? null,
+          userId: null,
           isActive: true,
         },
         data: { lastValidatedAt: new Date() },

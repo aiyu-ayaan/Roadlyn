@@ -43,7 +43,7 @@ export function RegisterForm() {
           <Input {...form.register('name')} />
         </Field>
         <Field label="User ID" error={form.formState.errors.userId?.message}>
-          <Input placeholder="Optional BYOK user owner" {...form.register('userId')} />
+          <Input placeholder="Optional account owner for this API client" {...form.register('userId')} />
         </Field>
         <Field label="Scopes" error={form.formState.errors.scopes?.message}>
           <Input {...form.register('scopes')} />

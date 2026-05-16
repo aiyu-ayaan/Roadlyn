@@ -192,7 +192,6 @@ export class AIGatewayService {
       return this.getProviderConfig(
         explicitProviderId,
         explicitModelId,
-        input.userId,
       );
     }
 
@@ -205,8 +204,6 @@ export class AIGatewayService {
         return this.getProviderConfig(
           settings.defaultProviderId,
           settings.defaultModelId,
-          input.userId,
-          settings.useOwnKeys,
         );
       }
     }
@@ -227,16 +224,14 @@ export class AIGatewayService {
       throw new ApiError(404, 'AI_MODEL_NOT_FOUND', 'No enabled AI model found');
     }
 
-    return this.getProviderConfig(model.providerId, model.id, input.userId);
+    return this.getProviderConfig(model.providerId, model.id);
   }
 
   private async getProviderConfig(
     providerId: string,
     modelId: string,
-    userId?: string,
-    preferUserKey = true,
   ): Promise<CacheProvider> {
-    const cacheKey = `ai:provider:${providerId}:${modelId}:${userId ?? 'global'}:${preferUserKey}`;
+    const cacheKey = `ai:provider:${providerId}:${modelId}:global`;
     const cached = await this.redis.get(cacheKey);
 
     if (cached) {
@@ -261,7 +256,7 @@ export class AIGatewayService {
       );
     }
 
-    const apiKey = await this.findApiKey(providerId, userId, preferUserKey);
+    const apiKey = await this.findApiKey(providerId);
 
     if (!apiKey && provider.providerType !== 'OLLAMA') {
       throw new ApiError(
@@ -292,26 +287,7 @@ export class AIGatewayService {
     return payload;
   }
 
-  private async findApiKey(
-    providerId: string,
-    userId?: string,
-    preferUserKey = true,
-  ) {
-    if (preferUserKey && userId) {
-      const userKey = await this.db.providerAPIKey.findFirst({
-        where: {
-          providerId,
-          userId,
-          isActive: true,
-        },
-        orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
-      });
-
-      if (userKey) {
-        return userKey;
-      }
-    }
-
+  private async findApiKey(providerId: string) {
     return this.db.providerAPIKey.findFirst({
       where: {
         providerId,

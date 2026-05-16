@@ -36,7 +36,6 @@ export interface ProviderKeyInput {
   providerId: string;
   apiKey: string;
   keyName: string;
-  userId?: string;
   isDefault?: boolean;
 }
 
@@ -82,7 +81,7 @@ export const aiService = {
     );
     return data.data;
   },
-  async listKeys(params?: { providerId?: string; userId?: string }) {
+  async listKeys(params?: { providerId?: string }) {
     const { data } = await apiClient.get<ApiResponse<ProviderAPIKey[]>>('/api/ai/keys', {
       params,
     });
@@ -95,7 +94,6 @@ export const aiService = {
     userId: string;
     providerId: string;
     fallbackProviderId?: string;
-    useOwnKeys?: boolean;
   }) {
     const { data } = await apiClient.post<ApiResponse<UserAISettings>>(
       '/api/ai/default-provider',
@@ -110,7 +108,7 @@ export const aiService = {
     );
     return data.data;
   },
-  async testProvider(input: { providerId: string; modelId: string; userId?: string }) {
+  async testProvider(input: { providerId: string; modelId: string }) {
     const { data } = await apiClient.post<
       ApiResponse<{ ok: boolean; status: number; providerId: string; modelId: string }>
     >('/api/ai/test-provider', input);

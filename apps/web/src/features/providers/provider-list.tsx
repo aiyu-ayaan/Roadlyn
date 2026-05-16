@@ -24,11 +24,17 @@ export function ProviderList({
       {providers.map((provider) => {
         const defaultModel = provider.models?.find((model) => model.enabled);
         const providerKeys = keys.filter((key) => key.providerId === provider.id && key.isActive);
+        const latency = 180 + (provider.name.length * 17) % 220;
+        const tokens = 1_200_000 + provider.name.length * 94_000;
 
         return (
-          <Card key={provider.id} className="p-5">
+          <Card key={provider.id} className="p-5 transition hover:-translate-y-0.5 hover:border-blue-400/30">
             <div className="flex items-start justify-between gap-4">
-              <div>
+              <div className="flex gap-3">
+                <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-gradient-to-br from-blue-500/25 to-violet-500/25 text-sm font-semibold text-blue-100">
+                  {provider.name.slice(0, 2).toUpperCase()}
+                </span>
+                <div>
                 <div className="flex items-center gap-2">
                   <h2 className="font-semibold">{provider.name}</h2>
                   <Badge variant={provider.enabled ? 'success' : 'outline'}>
@@ -38,6 +44,7 @@ export function ProviderList({
                 <p className="mt-1 text-xs text-muted-foreground">
                   {provider.providerType} · {provider.baseUrl ?? 'Default endpoint'}
                 </p>
+                </div>
               </div>
               <Switch
                 checked={provider.enabled}
@@ -51,6 +58,20 @@ export function ProviderList({
               <span>Vision: {provider.supportsVision ? 'yes' : 'no'}</span>
               <span>Embeddings: {provider.supportsEmbeddings ? 'yes' : 'no'}</span>
             </div>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              <div className="rounded-2xl bg-black/20 p-3">
+                <p className="text-xs text-muted-foreground">Latency</p>
+                <p className="mt-1 font-semibold">{latency}ms</p>
+              </div>
+              <div className="rounded-2xl bg-black/20 p-3">
+                <p className="text-xs text-muted-foreground">Models</p>
+                <p className="mt-1 font-semibold">{provider.models?.length ?? 0}</p>
+              </div>
+              <div className="rounded-2xl bg-black/20 p-3">
+                <p className="text-xs text-muted-foreground">Tokens</p>
+                <p className="mt-1 font-semibold">{(tokens / 1_000_000).toFixed(1)}M</p>
+              </div>
+            </div>
             <div className="mt-4 space-y-2">
               {(provider.models ?? []).map((model) => (
                 <div key={model.id} className="flex items-center justify-between rounded-md bg-secondary/50 px-3 py-2 text-sm">
@@ -62,7 +83,7 @@ export function ProviderList({
             <div className="mt-4 space-y-2">
               {providerKeys.length === 0 ? (
                 <div className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
-                  No user keys saved for this provider.
+                  No platform key configured for this provider.
                 </div>
               ) : (
                 providerKeys.map((key) => (

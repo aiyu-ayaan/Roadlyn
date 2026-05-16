@@ -90,7 +90,6 @@ export interface AIModel {
 export interface ProviderAPIKey {
   id: string;
   providerId: string;
-  userId?: string | null;
   keyName: string;
   isDefault: boolean;
   isActive: boolean;
@@ -103,7 +102,6 @@ export interface UserAISettings {
   userId: string;
   defaultProviderId?: string | null;
   defaultModelId?: string | null;
-  useOwnKeys: boolean;
   fallbackProviderId?: string | null;
 }
 
