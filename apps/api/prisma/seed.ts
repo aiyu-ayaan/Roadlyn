@@ -1,6 +1,7 @@
 /**
  * Prisma Seed Script
- * Populate database with initial data
+ * Populates provider metadata only. Provider API keys must be added through
+ * the dashboard/API and are never read from .env files.
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -8,26 +9,48 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  // Seed AI Providers
-  await prisma.aiProvider.createMany({
-    data: [
-      {
-        name: 'OpenAI',
-        type: 'openai',
-        isActive: true,
-      },
-      {
-        name: 'Anthropic',
-        type: 'anthropic',
-        isActive: true,
-      },
-    ],
-    skipDuplicates: true,
+  await prisma.aiProvider.upsert({
+    where: { slug: 'openai' },
+    update: {},
+    create: {
+      name: 'OpenAI',
+      slug: 'openai',
+      providerType: 'OPENAI',
+      supportsStreaming: true,
+      supportsVision: true,
+      supportsEmbeddings: true,
+      enabled: true,
+    },
   });
 
-  // Seed AI Models
+  await prisma.aiProvider.upsert({
+    where: { slug: 'anthropic' },
+    update: {},
+    create: {
+      name: 'Anthropic',
+      slug: 'anthropic',
+      providerType: 'ANTHROPIC',
+      supportsStreaming: true,
+      supportsVision: true,
+      enabled: true,
+    },
+  });
+
+  await prisma.aiProvider.upsert({
+    where: { slug: 'ollama-local' },
+    update: {},
+    create: {
+      name: 'Ollama Local',
+      slug: 'ollama-local',
+      providerType: 'OLLAMA',
+      baseUrl: 'http://localhost:11434/v1',
+      supportsStreaming: true,
+      enabled: true,
+    },
+  });
+
   const openaiProvider = await prisma.aiProvider.findUnique({
-    where: { name: 'OpenAI' },
+    where: { slug: 'openai' },
   });
 
   if (openaiProvider) {
@@ -35,21 +58,25 @@ async function main() {
       data: [
         {
           providerId: openaiProvider.id,
-          name: 'gpt-4',
-          displayName: 'GPT-4',
-          version: '1',
-          maxTokens: 8192,
-          costPer1kTokens: 0.03,
-          isActive: true,
+          modelName: 'gpt-4o',
+          displayName: 'GPT-4o',
+          contextWindow: 128000,
+          inputPricing: 0.0000025,
+          outputPricing: 0.00001,
+          supportsTools: true,
+          supportsVision: true,
+          enabled: true,
         },
         {
           providerId: openaiProvider.id,
-          name: 'gpt-3.5-turbo',
-          displayName: 'GPT-3.5 Turbo',
-          version: '1',
-          maxTokens: 4096,
-          costPer1kTokens: 0.001,
-          isActive: true,
+          modelName: 'gpt-4o-mini',
+          displayName: 'GPT-4o mini',
+          contextWindow: 128000,
+          inputPricing: 0.00000015,
+          outputPricing: 0.0000006,
+          supportsTools: true,
+          supportsVision: true,
+          enabled: true,
         },
       ],
       skipDuplicates: true,

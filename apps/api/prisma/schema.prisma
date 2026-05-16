@@ -12,14 +12,18 @@ datasource db {
 
 // User model
 model User {
-  id        String     @id @default(cuid())
-  email     String     @unique
-  name      String?
-  avatar    String?
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  sessions  Session[]
-  roadmaps  Roadmap[]
+  id             String           @id @default(cuid())
+  email          String           @unique
+  name           String?
+  avatar         String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  sessions       Session[]
+  roadmaps       Roadmap[]
+  providerKeys   ProviderAPIKey[]
+  aiSettings     UserAISettings?
+  oauthClients   OAuthClient[]
+  tokenUsageLogs AITokenUsage[]
 
   @@index([email])
 }
@@ -35,34 +39,142 @@ model Session {
   @@index([userId])
 }
 
-// AI Provider configuration
-model AIProvider {
-  id        String     @id @default(cuid())
-  name      String     @unique
-  type      String     // 'openai', 'anthropic', etc.
-  isActive  Boolean    @default(true)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  models    AIModel[]
+// OAuth2 client credentials for API access
+model OAuthClient {
+  id               String   @id @default(cuid())
+  name             String
+  clientId         String   @unique
+  clientSecretHash String
+  scopes           String[] @default([])
+  userId           String?
+  user             User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  @@index([type])
+  @@index([userId])
+  @@index([clientId])
+}
+
+enum AIProviderType {
+  OPENAI
+  ANTHROPIC
+  GEMINI
+  DEEPSEEK
+  GROK
+  MISTRAL
+  TOGETHERAI
+  OPENROUTER
+  OLLAMA
+  CUSTOM_OPENAI_COMPATIBLE
+}
+
+// AI Provider configuration. API keys are stored separately and encrypted.
+model AIProvider {
+  id                 String           @id @default(cuid())
+  name               String
+  slug               String           @unique
+  providerType       AIProviderType
+  baseUrl            String?
+  supportsStreaming  Boolean          @default(true)
+  supportsVision     Boolean          @default(false)
+  supportsEmbeddings Boolean          @default(false)
+  enabled            Boolean          @default(true)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  models             AIModel[]
+  apiKeys            ProviderAPIKey[]
+  userDefaults       UserAISettings[] @relation("DefaultProvider")
+  userFallbacks      UserAISettings[] @relation("FallbackProvider")
+  usageLogs          AITokenUsage[]
+
+  @@index([providerType])
+  @@index([enabled])
 }
 
 // AI Model configuration
 model AIModel {
-  id              String      @id @default(cuid())
-  providerId      String
-  provider        AIProvider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  name            String
-  displayName     String
-  version         String
-  maxTokens       Int
-  costPer1kTokens Float
-  isActive        Boolean     @default(true)
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id                String           @id @default(cuid())
+  providerId        String
+  provider          AIProvider       @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  modelName         String
+  displayName       String
+  contextWindow     Int?
+  inputPricing      Decimal?         @db.Decimal(12, 8)
+  outputPricing     Decimal?         @db.Decimal(12, 8)
+  supportsTools     Boolean          @default(false)
+  supportsVision    Boolean          @default(false)
+  supportsReasoning Boolean          @default(false)
+  enabled           Boolean          @default(true)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  userDefaults      UserAISettings[]
+  usageLogs         AITokenUsage[]
 
   @@index([providerId])
+  @@index([enabled])
+  @@unique([providerId, modelName])
+}
+
+model ProviderAPIKey {
+  id              String     @id @default(cuid())
+  providerId      String
+  provider        AIProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  userId          String?
+  user            User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  encryptedKey    String
+  keyName         String
+  isDefault       Boolean    @default(false)
+  isActive        Boolean    @default(true)
+  lastValidatedAt DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([providerId])
+  @@index([userId])
+  @@index([isActive])
+}
+
+model UserAISettings {
+  id                String      @id @default(cuid())
+  userId            String      @unique
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  defaultProviderId String?
+  defaultProvider   AIProvider? @relation("DefaultProvider", fields: [defaultProviderId], references: [id], onDelete: SetNull)
+  defaultModelId    String?
+  defaultModel      AIModel?    @relation(fields: [defaultModelId], references: [id], onDelete: SetNull)
+  useOwnKeys        Boolean     @default(false)
+  fallbackProviderId String?
+  fallbackProvider   AIProvider? @relation("FallbackProvider", fields: [fallbackProviderId], references: [id], onDelete: SetNull)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([defaultProviderId])
+  @@index([defaultModelId])
+  @@index([fallbackProviderId])
+}
+
+model AITokenUsage {
+  id             String      @id @default(cuid())
+  userId         String?
+  user           User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  providerId     String
+  provider       AIProvider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  modelId        String?
+  model          AIModel?    @relation(fields: [modelId], references: [id], onDelete: SetNull)
+  operation      String
+  promptTokens   Int         @default(0)
+  completionTokens Int       @default(0)
+  totalTokens    Int         @default(0)
+  estimatedCost  Decimal?    @db.Decimal(12, 8)
+  success        Boolean     @default(true)
+  errorCode      String?
+  createdAt      DateTime    @default(now())
+
+  @@index([userId])
+  @@index([providerId])
+  @@index([modelId])
+  @@index([createdAt])
 }
 
 // Placeholder for future roadmap model

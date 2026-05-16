@@ -10,8 +10,8 @@ const envSchema = z.object({
   REDIS_URL: z.string().default('redis://localhost:6379'),
   JWT_SECRET: z.string(),
   JWT_EXPIRATION: z.string().default('7d'),
-  OPENAI_API_KEY: z.string().optional(),
-  ANTHROPIC_API_KEY: z.string().optional(),
+  AI_KEY_ENCRYPTION_SECRET: z.string().min(32),
+  OAUTH_TOKEN_ISSUER: z.string().default('roadlyn-api'),
   SENDGRID_API_KEY: z.string().optional(),
   STRIPE_API_KEY: z.string().optional(),
 });
