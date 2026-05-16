@@ -1,11 +1,10 @@
 {
   "$schema": "https://turborepo.org/schema.json",
-  "version": "1",
   "globalDependencies": [
     "**/.env",
     "**/.env.local"
   ],
-  "tasks": {
+  "pipeline": {
     "dev": {
       "cache": false,
       "persistent": true,
