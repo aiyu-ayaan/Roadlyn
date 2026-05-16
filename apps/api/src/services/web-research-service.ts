@@ -43,7 +43,7 @@ export async function researchLearningResources(input: {
   const deduped = dedupeResources(resultSets.flat())
     .sort((a, b) => scoreResource(b) - scoreResource(a))
     .slice(0, 36);
-  const enriched = await Promise.all(
+  const withGithubMetadata = await Promise.all(
     deduped.map(async (resource) => {
       if (resource.kind !== 'github') {
         return resource;
@@ -54,6 +54,11 @@ export async function researchLearningResources(input: {
         stars: await getGithubStars(resource.url),
       };
     }),
+  );
+  const enriched = await Promise.all(
+    withGithubMetadata.map((resource, index) =>
+      index < 14 ? enrichResourceFromPage(resource) : resource,
+    ),
   );
 
   return enriched.sort((a, b) => scoreResource(b) - scoreResource(a));
@@ -147,6 +152,70 @@ async function getGithubStars(url: string) {
 
   const data = await response.json() as { stargazers_count?: number };
   return data.stargazers_count ?? null;
+}
+
+async function enrichResourceFromPage(resource: ResearchResource): Promise<ResearchResource> {
+  if (resource.kind === 'youtube' || resource.kind === 'github') {
+    return resource;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4500);
+    const response = await fetch(resource.url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; RoadlynLearningResearch/0.1)',
+      },
+    });
+    clearTimeout(timeout);
+
+    const contentType = response.headers.get('content-type') ?? '';
+    if (!response.ok || !contentType.includes('text/html')) {
+      return resource;
+    }
+
+    const html = await response.text();
+    const pageSummary = summarizeHtmlPage(html);
+
+    if (!pageSummary) {
+      return resource;
+    }
+
+    return {
+      ...resource,
+      summary: [resource.summary, pageSummary].filter(Boolean).join(' '),
+    };
+  } catch {
+    return resource;
+  }
+}
+
+function summarizeHtmlPage(html: string) {
+  const description =
+    readMetaContent(html, 'description') ??
+    readMetaContent(html, 'og:description') ??
+    readMetaContent(html, 'twitter:description');
+  const headings = [...html.matchAll(/<h[12][^>]*>([\s\S]*?)<\/h[12]>/gi)]
+    .map((match) => decodeHtml(stripTags(match[1])).trim())
+    .filter(Boolean)
+    .slice(0, 4);
+  const parts = [
+    description ? `Page description: ${decodeHtml(stripTags(description)).trim()}` : '',
+    headings.length ? `Key headings: ${headings.join('; ')}` : '',
+  ].filter(Boolean);
+
+  return parts.join(' ').slice(0, 900);
+}
+
+function readMetaContent(html: string, name: string) {
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(
+    `<meta[^>]+(?:name|property)=["']${escapedName}["'][^>]+content=["']([^"']+)["'][^>]*>|<meta[^>]+content=["']([^"']+)["'][^>]+(?:name|property)=["']${escapedName}["'][^>]*>`,
+    'i',
+  );
+  const match = html.match(pattern);
+  return match?.[1] ?? match?.[2];
 }
 
 function dedupeResources(resources: ResearchResource[]) {
