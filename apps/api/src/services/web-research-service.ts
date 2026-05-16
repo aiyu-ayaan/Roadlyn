@@ -21,12 +21,12 @@ export async function researchLearningResources(input: {
 }) {
   const base = `${input.topic} ${input.experienceLevel ?? ''} ${input.goal ?? ''}`.trim();
   const searches: Array<{ kind: ResourceKind; query: string }> = [
-    { kind: 'officialDocs', query: `${base} official documentation latest 2026` },
-    { kind: 'youtube', query: `${base} YouTube tutorial crash course project 2025 2026` },
-    { kind: 'github', query: `${base} GitHub repository project examples 2025 2026` },
-    { kind: 'article', query: `${base} best practices tutorial guide 2025 2026` },
-    { kind: 'course', query: `${base} course curriculum roadmap 2025 2026` },
-    { kind: 'community', query: `${base} roadmap community recommendations 2025 2026` },
+    { kind: 'officialDocs', query: `${base} official documentation docs latest 2026 current best practices` },
+    { kind: 'youtube', query: `${base} YouTube long form tutorial crash course project 2025 2026` },
+    { kind: 'github', query: `${base} GitHub repository examples projects stars 2025 2026` },
+    { kind: 'article', query: `${base} tutorial guide best practices updated 2025 2026` },
+    { kind: 'course', query: `${base} course curriculum learning path roadmap 2025 2026` },
+    { kind: 'community', query: `${base} community recommendations reddit hacker news roadmap 2025 2026` },
   ];
 
   const resultSets = await Promise.all(
@@ -40,7 +40,9 @@ export async function researchLearningResources(input: {
     }),
   );
 
-  const deduped = dedupeResources(resultSets.flat()).slice(0, 32);
+  const deduped = dedupeResources(resultSets.flat())
+    .sort((a, b) => scoreResource(b) - scoreResource(a))
+    .slice(0, 36);
   const enriched = await Promise.all(
     deduped.map(async (resource) => {
       if (resource.kind !== 'github') {
@@ -62,7 +64,15 @@ function inferKind(url: string, fallback: ResourceKind): ResourceKind {
 
   if (normalized.includes('youtube.com') || normalized.includes('youtu.be')) return 'youtube';
   if (normalized.includes('github.com')) return 'github';
-  if (normalized.includes('/docs') || normalized.includes('docs.') || normalized.includes('developer.')) return 'officialDocs';
+  if (
+    normalized.includes('/docs') ||
+    normalized.includes('docs.') ||
+    normalized.includes('developer.') ||
+    normalized.includes('learn.microsoft.com') ||
+    normalized.includes('developer.mozilla.org')
+  ) {
+    return 'officialDocs';
+  }
 
   return fallback;
 }
@@ -82,22 +92,24 @@ async function searchDuckDuckGo(query: string): Promise<Omit<ResearchResource, '
   }
 
   const html = await response.text();
-  const matches = [...html.matchAll(/<a rel="nofollow" class="result__a" href="([^"]+)">([\s\S]*?)<\/a>/g)];
+  const matches = [...html.matchAll(/<div class="result[\s\S]*?<a rel="nofollow" class="result__a" href="([^"]+)">([\s\S]*?)<\/a>([\s\S]*?)(?=<div class="result|<\/body>)/g)];
 
   return matches.slice(0, SEARCH_LIMIT).map((match) => {
     const resultUrl = decodeDuckDuckGoUrl(decodeHtml(match[1]));
     const title = decodeHtml(stripTags(match[2])).trim();
+    const summaryMatch = match[3].match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>|class="result__snippet"[^>]*>([\s\S]*?)<\/div>/);
+    const summary = summaryMatch
+      ? decodeHtml(stripTags(summaryMatch[1] ?? summaryMatch[2] ?? '')).trim()
+      : undefined;
 
     return {
       title,
       url: resultUrl,
       source: getSourceName(resultUrl),
-      summary: undefined,
+      summary: summary || undefined,
       stars: null,
       duration: null,
-      channelName: resultUrl.includes('youtube.com') || resultUrl.includes('youtu.be')
-        ? getSourceName(resultUrl)
-        : null,
+      channelName: inferYouTubeChannel(title, resultUrl),
     };
   }).filter((result) => result.title && result.url.startsWith('http'));
 }
@@ -165,7 +177,15 @@ function normalizeUrl(url: string) {
 
 function isLowQuality(resource: ResearchResource) {
   const text = `${resource.title} ${resource.url}`.toLowerCase();
-  return ['coupon', 'answers', 'cheat', 'torrent', 'download free course'].some((term) => text.includes(term));
+  return [
+    'coupon',
+    'answers',
+    'cheat',
+    'torrent',
+    'download free course',
+    'pdfcoffee',
+    'scribd',
+  ].some((term) => text.includes(term));
 }
 
 function scoreResource(resource: ResearchResource) {
@@ -176,9 +196,13 @@ function scoreResource(resource: ResearchResource) {
   if (resource.kind === 'youtube') score += 28;
   if (resource.kind === 'github') score += 24;
   if (resource.kind === 'course') score += 18;
+  if (resource.kind === 'article') score += 12;
+  if (resource.kind === 'community') score += 8;
   if (url.includes('docs.') || url.includes('/docs') || url.includes('developer.')) score += 18;
+  if (url.includes('learn.microsoft.com') || url.includes('developer.mozilla.org')) score += 18;
   if (url.includes('github.com')) score += 12;
   if (url.includes('youtube.com') || url.includes('youtu.be')) score += 12;
+  if (url.includes('reddit.com') || url.includes('news.ycombinator.com')) score += 5;
   if (resource.title.match(/2025|2026|latest|updated/i)) score += 10;
   if (resource.stars) score += Math.min(20, Math.log10(resource.stars + 1) * 5);
 
@@ -201,6 +225,15 @@ function getSourceName(url: string) {
   } catch {
     return 'web';
   }
+}
+
+function inferYouTubeChannel(title: string, url: string) {
+  if (!url.includes('youtube.com') && !url.includes('youtu.be')) {
+    return null;
+  }
+
+  const parts = title.split(' - ');
+  return parts.length > 1 ? parts[parts.length - 1].trim() : null;
 }
 
 function stripTags(value: string) {
