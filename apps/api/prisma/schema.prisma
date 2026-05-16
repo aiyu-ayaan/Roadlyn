@@ -128,19 +128,21 @@ model AIModel {
 }
 
 model ProviderAPIKey {
-  id              String     @id @default(cuid())
-  providerId      String
-  provider        AIProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  id              String         @id @default(cuid())
+  providerType    AIProviderType
+  providerId      String?
+  provider        AIProvider?    @relation(fields: [providerId], references: [id], onDelete: Cascade)
   userId          String?
-  user            User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
   encryptedKey    String
   keyName         String
-  isDefault       Boolean    @default(false)
-  isActive        Boolean    @default(true)
+  isDefault       Boolean        @default(false)
+  isActive        Boolean        @default(true)
   lastValidatedAt DateTime?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
+  @@index([providerType])
   @@index([providerId])
   @@index([userId])
   @@index([isActive])

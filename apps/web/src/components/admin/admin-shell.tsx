@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import { Bot, KeyRound, LogOut, ShieldCheck, Users } from 'lucide-react';
+import { BarChart3, Bot, KeyRound, LogOut, ShieldCheck, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { authService } from '@/services/auth/auth-service';
@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 const adminNavItems = [
   { href: '/admin/users', label: 'Users', icon: Users },
   { href: '/admin/providers', label: 'AI Providers', icon: KeyRound },
+  { href: '/admin/token', label: 'Token Usage', icon: BarChart3 },
 ];
 
 export function AdminRoute({ children }: { children: React.ReactNode }) {

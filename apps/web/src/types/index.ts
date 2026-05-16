@@ -81,6 +81,7 @@ export interface AIProvider {
   createdAt: string;
   updatedAt: string;
   models?: AIModel[];
+  apiKeys?: { id: string; keyName: string; providerType: AIProviderType; isDefault: boolean }[];
 }
 
 export interface AIModel {
@@ -101,12 +102,19 @@ export interface AIModel {
 
 export interface ProviderAPIKey {
   id: string;
-  providerId: string;
+  providerType: AIProviderType;
+  providerId?: string | null;
   keyName: string;
   isDefault: boolean;
   isActive: boolean;
   lastValidatedAt?: string | null;
   createdAt: string;
+}
+
+export interface AvailableModel {
+  id: string;
+  name: string;
+  contextWindow?: number | null;
 }
 
 export interface UserAISettings {
@@ -115,6 +123,74 @@ export interface UserAISettings {
   defaultProviderId?: string | null;
   defaultModelId?: string | null;
   fallbackProviderId?: string | null;
+}
+
+export interface TokenUsageRecord {
+  id: string;
+  userId?: string | null;
+  user?: { id: string; email: string; name?: string | null } | null;
+  providerId: string;
+  provider: { id: string; name: string; providerType: string };
+  modelId?: string | null;
+  model?: { id: string; displayName: string; modelName: string } | null;
+  operation: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  estimatedCost?: string | number | null;
+  success: boolean;
+  errorCode?: string | null;
+  createdAt: string;
+}
+
+export interface ProviderUsageBreakdown {
+  providerId: string;
+  providerName: string;
+  providerType: string;
+  requests: number;
+  totalTokens: number;
+  promptTokens: number;
+  completionTokens: number;
+}
+
+export interface OperationBreakdown {
+  operation: string;
+  requests: number;
+  totalTokens: number;
+}
+
+export interface DailyUsage {
+  date: string;
+  tokens: number;
+  prompt: number;
+  completion: number;
+  requests: number;
+  errors: number;
+}
+
+export interface TokenUsageStats {
+  totals: {
+    requests: number;
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    errors: number;
+    errorRate: number;
+  };
+  byProvider: ProviderUsageBreakdown[];
+  byOperation: OperationBreakdown[];
+  daily: DailyUsage[];
+}
+
+export interface PaginatedResponse<T> {
+  success: boolean;
+  data: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }
 
 export interface RoadmapGenerateRequest {

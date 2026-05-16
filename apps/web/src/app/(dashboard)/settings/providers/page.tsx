@@ -1,35 +1,38 @@
 'use client';
 
+import { Brain, KeyRound } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
-import { Skeleton } from '@/components/ui/skeleton';
-import { ProviderForms } from '@/features/providers/provider-forms';
-import { ProviderList } from '@/features/providers/provider-list';
-import { useProviderKeys, useProviders } from '@/hooks/use-ai';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ApiKeysTab } from '@/features/providers/api-keys-tab';
+import { IntegrationsTab } from '@/features/providers/integrations-tab';
 
 export default function ProviderSettingsPage() {
-  const providers = useProviders();
-  const keys = useProviderKeys();
-
   return (
     <div className="space-y-6">
       <PageHeader
         title="Provider operations"
         description="Admin configuration for platform AI providers, models, encrypted keys, defaults, and connection tests."
       />
-      {providers.isLoading || keys.isLoading ? (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Skeleton className="h-56" />
-          <Skeleton className="h-56" />
-        </div>
-      ) : (
-        <>
-          <ProviderForms providers={providers.data ?? []} />
-          <ProviderList
-            providers={providers.data ?? []}
-            keys={keys.data ?? []}
-          />
-        </>
-      )}
+      <Tabs defaultValue="keys" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="keys">
+            <KeyRound className="mr-1.5 size-3.5" />
+            API Keys
+          </TabsTrigger>
+          <TabsTrigger value="integrations">
+            <Brain className="mr-1.5 size-3.5" />
+            Integrations
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="keys">
+          <ApiKeysTab />
+        </TabsContent>
+
+        <TabsContent value="integrations">
+          <IntegrationsTab />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

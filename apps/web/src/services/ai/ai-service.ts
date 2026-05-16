@@ -4,6 +4,7 @@ import {
   AIProvider,
   AIProviderType,
   ApiResponse,
+  AvailableModel,
   ProviderAPIKey,
   UserAISettings,
 } from '@/types';
@@ -34,10 +35,20 @@ export interface ModelInput {
 }
 
 export interface ProviderKeyInput {
-  providerId: string;
+  providerType: AIProviderType;
+  providerId?: string;
   apiKey: string;
-  keyName: string;
+  keyName?: string;
   isDefault?: boolean;
+}
+
+export interface IntegrationInput {
+  name: string;
+  slug: string;
+  providerType: AIProviderType;
+  keyId: string;
+  baseUrl?: string;
+  models: { modelName: string; displayName: string; contextWindow?: number }[];
 }
 
 export const aiService = {
@@ -82,7 +93,7 @@ export const aiService = {
     );
     return data.data;
   },
-  async listKeys(params?: { providerId?: string }) {
+  async listKeys(params?: { providerId?: string; providerType?: string }) {
     const { data } = await apiClient.get<ApiResponse<ProviderAPIKey[]>>('/api/ai/keys', {
       params,
     });
@@ -90,6 +101,33 @@ export const aiService = {
   },
   async deleteKey(id: string) {
     await apiClient.delete(`/api/ai/keys/${id}`);
+  },
+  async validateKey(input: { providerType: AIProviderType; apiKey: string; baseUrl?: string }) {
+    const { data } = await apiClient.post<
+      ApiResponse<{ valid: boolean; error?: string }>
+    >('/api/ai/keys/validate', input);
+    return data.data;
+  },
+  async getNextKeyName(providerType: AIProviderType) {
+    const { data } = await apiClient.get<ApiResponse<{ name: string }>>(
+      '/api/ai/keys/next-name',
+      { params: { providerType } },
+    );
+    return data.data;
+  },
+  async listAvailableModels(input: { providerType: AIProviderType; keyId: string }) {
+    const { data } = await apiClient.post<ApiResponse<AvailableModel[]>>(
+      '/api/ai/available-models',
+      input,
+    );
+    return data.data;
+  },
+  async createIntegration(input: IntegrationInput) {
+    const { data } = await apiClient.post<ApiResponse<AIProvider>>(
+      '/api/ai/integrations',
+      input,
+    );
+    return data.data;
   },
   async setDefaultProvider(input: {
     userId: string;

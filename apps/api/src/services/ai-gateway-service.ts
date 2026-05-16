@@ -291,9 +291,29 @@ export class AIGatewayService {
   }
 
   private async findApiKey(providerId: string) {
-    return this.db.providerAPIKey.findFirst({
+    // First try to find a key directly linked to this provider
+    const directKey = await this.db.providerAPIKey.findFirst({
       where: {
         providerId,
+        userId: null,
+        isActive: true,
+      },
+      orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+    });
+
+    if (directKey) return directKey;
+
+    // Fallback: find a key matching the provider's type
+    const provider = await this.db.aIProvider.findUnique({
+      where: { id: providerId },
+      select: { providerType: true },
+    });
+
+    if (!provider) return null;
+
+    return this.db.providerAPIKey.findFirst({
+      where: {
+        providerType: provider.providerType,
         userId: null,
         isActive: true,
       },

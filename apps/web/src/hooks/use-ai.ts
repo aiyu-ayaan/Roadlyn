@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { aiService, ModelInput, ProviderInput, ProviderKeyInput } from '@/services/ai/ai-service';
+import {
+  aiService,
+  IntegrationInput,
+  ModelInput,
+  ProviderInput,
+  ProviderKeyInput,
+} from '@/services/ai/ai-service';
 import { queryKeys } from '@/hooks/queries';
+import { AIProviderType } from '@/types';
 
 export function useProviders() {
   return useQuery({
@@ -77,9 +84,43 @@ export function useAddProviderKey() {
 
   return useMutation({
     mutationFn: (input: ProviderKeyInput) => aiService.addKey(input),
-    onSuccess: (_key, input) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.keys });
-      queryClient.invalidateQueries({ queryKey: queryKeys.models(input.providerId) });
+    },
+  });
+}
+
+export function useValidateKey() {
+  return useMutation({
+    mutationFn: (input: { providerType: AIProviderType; apiKey: string; baseUrl?: string }) =>
+      aiService.validateKey(input),
+  });
+}
+
+export function useNextKeyName(providerType?: AIProviderType) {
+  return useQuery({
+    queryKey: queryKeys.nextKeyName(providerType),
+    queryFn: () => aiService.getNextKeyName(providerType!),
+    enabled: !!providerType,
+  });
+}
+
+export function useAvailableModels(providerType?: AIProviderType, keyId?: string) {
+  return useQuery({
+    queryKey: queryKeys.availableModels(providerType, keyId),
+    queryFn: () => aiService.listAvailableModels({ providerType: providerType!, keyId: keyId! }),
+    enabled: !!providerType && !!keyId,
+  });
+}
+
+export function useCreateIntegration() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: IntegrationInput) => aiService.createIntegration(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.providers });
+      queryClient.invalidateQueries({ queryKey: queryKeys.keys });
     },
   });
 }
