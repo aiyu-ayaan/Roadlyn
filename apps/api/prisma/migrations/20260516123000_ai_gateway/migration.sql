@@ -46,6 +46,8 @@ ALTER TABLE "AIModel"
 
 ALTER TABLE "AIModel"
   ALTER COLUMN "inputPricing" TYPE DECIMAL(12,8) USING "inputPricing"::DECIMAL(12,8),
+  ALTER COLUMN "inputPricing" DROP NOT NULL,
+  ALTER COLUMN "contextWindow" DROP NOT NULL,
   ALTER COLUMN "version" DROP NOT NULL;
 
 ALTER TABLE "AIModel" DROP COLUMN "version";
@@ -110,6 +112,7 @@ CREATE TABLE "AITokenUsage" (
 );
 
 -- CreateIndex
+DROP INDEX "AIProvider_name_key";
 CREATE UNIQUE INDEX "AIProvider_slug_key" ON "AIProvider"("slug");
 CREATE INDEX "AIProvider_providerType_idx" ON "AIProvider"("providerType");
 CREATE INDEX "AIProvider_enabled_idx" ON "AIProvider"("enabled");
