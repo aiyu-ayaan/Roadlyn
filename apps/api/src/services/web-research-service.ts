@@ -54,9 +54,10 @@ export async function researchLearningResources(input: {
 
   const deduped = dedupeResources([...youtubeResults.flat(), ...resultSets.flat()])
     .sort((a, b) => scoreResource(b) - scoreResource(a))
-    .slice(0, 60);
+    .slice(0, 80);
+  const availableResources = await filterAvailableResources(deduped);
   const withGithubMetadata = await Promise.all(
-    deduped.map(async (resource) => {
+    availableResources.slice(0, 60).map(async (resource) => {
       if (resource.kind !== 'github') {
         return resource;
       }
@@ -368,6 +369,195 @@ async function getGithubStars(url: string) {
 
   const data = await response.json() as { stargazers_count?: number };
   return data.stargazers_count ?? null;
+}
+
+async function filterAvailableResources(resources: ResearchResource[]) {
+  const checks = await Promise.all(
+    resources.map(async (resource) => ({
+      resource,
+      isAvailable: await isResourceAvailable(resource),
+    })),
+  );
+
+  return checks
+    .filter((check) => check.isAvailable)
+    .map((check) => check.resource);
+}
+
+async function isResourceAvailable(resource: ResearchResource) {
+  if (resource.kind === 'github') {
+    return isGithubRepositoryAvailable(resource.url);
+  }
+
+  if (resource.kind === 'youtube') {
+    return isYouTubeVideoAvailable(resource.url);
+  }
+
+  return isHttpResourceAvailable(resource.url);
+}
+
+async function isGithubRepositoryAvailable(url: string) {
+  const match = url.match(/github\.com\/([^/\s]+)\/([^/#?\s]+)/i);
+
+  if (!match) {
+    return false;
+  }
+
+  const [, owner, rawRepo] = match;
+  const repo = rawRepo.replace(/\.git$/i, '');
+
+  try {
+    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'RoadlynLearningResearchBot/0.1',
+      },
+    });
+
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function isYouTubeVideoAvailable(url: string) {
+  const videoId = readYouTubeVideoId(url);
+
+  if (!videoId) {
+    return false;
+  }
+
+  try {
+    const response = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}&format=json`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; RoadlynLearningResearch/0.1)',
+      },
+    });
+
+    return response.ok;
+  } catch {
+    return true;
+  }
+}
+
+async function isHttpResourceAvailable(url: string) {
+  const parsed = parseHttpUrl(url);
+
+  if (!parsed || isBlockedHost(parsed.hostname)) {
+    return false;
+  }
+
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (compatible; RoadlynLearningResearch/0.1)',
+    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  };
+
+  try {
+    const head = await fetchWithTimeout(parsed.toString(), {
+      method: 'HEAD',
+      redirect: 'follow',
+      headers,
+    });
+
+    if (isDefinitivelyUnavailable(head.status)) {
+      return false;
+    }
+
+    if (head.ok || isBotBlocked(head.status)) {
+      return true;
+    }
+  } catch {
+    // Some hosts reject HEAD even when the page works in a browser.
+  }
+
+  try {
+    const response = await fetchWithTimeout(parsed.toString(), {
+      method: 'GET',
+      redirect: 'follow',
+      headers: {
+        ...headers,
+        Range: 'bytes=0-1024',
+      },
+    });
+
+    return !isDefinitivelyUnavailable(response.status);
+  } catch {
+    return false;
+  }
+}
+
+function parseHttpUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    return ['http:', 'https:'].includes(parsed.protocol) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function isDefinitivelyUnavailable(status: number) {
+  return status === 404 || status === 410 || status === 451 || status >= 500;
+}
+
+function isBotBlocked(status: number) {
+  return status === 401 || status === 403 || status === 405 || status === 429;
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 6000);
+
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function readYouTubeVideoId(url: string) {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, '').toLowerCase();
+    const pathParts = parsed.pathname.split('/').filter(Boolean);
+
+    if (host === 'youtu.be') {
+      return pathParts[0] ?? null;
+    }
+
+    if (host.endsWith('youtube.com')) {
+      return (
+        parsed.searchParams.get('v') ??
+        readPathValue(pathParts, 'embed') ??
+        readPathValue(pathParts, 'shorts') ??
+        readPathValue(pathParts, 'live')
+      );
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function readPathValue(pathParts: string[], key: string) {
+  const index = pathParts.indexOf(key);
+  return index >= 0 ? pathParts[index + 1] ?? null : null;
+}
+
+function isBlockedHost(hostname: string) {
+  const host = hostname.toLowerCase();
+  return (
+    host === 'localhost' ||
+    host === '0.0.0.0' ||
+    host === '127.0.0.1' ||
+    host.endsWith('.local') ||
+    host.startsWith('10.') ||
+    host.startsWith('192.168.') ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+  );
 }
 
 async function enrichResourceFromPage(resource: ResearchResource): Promise<ResearchResource> {
