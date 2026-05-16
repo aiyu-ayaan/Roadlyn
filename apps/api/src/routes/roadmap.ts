@@ -90,6 +90,49 @@ export async function roadmapRoutes(fastify: FastifyInstance) {
       throw new ApiError(404, 'ROADMAP_NOT_FOUND', 'Roadmap not found');
     }
 
+    if (
+      roadmap.status === 'FAILED' &&
+      !roadmap.generatedCourse &&
+      Array.isArray(roadmap.researchedResources)
+    ) {
+      const fallbackCourse = buildFallbackCourse(
+        {
+          topic: roadmap.topic ?? roadmap.title,
+          experienceLevel: roadmap.experienceLevel ?? undefined,
+          goal: roadmap.goal ?? undefined,
+          weeklyHours: roadmap.weeklyHours ?? undefined,
+          useUserDefaults: true,
+        },
+        roadmap.researchedResources as ResearchResource[],
+      );
+
+      await updateRoadmapJob(fastify, roadmap.id, {
+        title: fallbackCourse.title,
+        status: 'COMPLETED',
+        progress: 100,
+        generatedCourse: fallbackCourse,
+        errorMessage: roadmap.errorMessage
+          ? `AI provider failed earlier, so Roadlyn recovered this course from scraped research: ${roadmap.errorMessage}`
+          : 'AI provider failed earlier, so Roadlyn recovered this course from scraped research.',
+        completedAt: new Date(),
+      });
+
+      return {
+        success: true,
+        data: {
+          ...roadmap,
+          title: fallbackCourse.title,
+          status: 'COMPLETED',
+          progress: 100,
+          generatedCourse: fallbackCourse,
+          errorMessage: roadmap.errorMessage
+            ? `AI provider failed earlier, so Roadlyn recovered this course from scraped research: ${roadmap.errorMessage}`
+            : 'AI provider failed earlier, so Roadlyn recovered this course from scraped research.',
+          completedAt: new Date(),
+        },
+      };
+    }
+
     return { success: true, data: roadmap };
   });
 
