@@ -12,7 +12,7 @@ export interface ResearchResource {
   channelName?: string | null;
 }
 
-const SEARCH_LIMIT = 6;
+const SEARCH_LIMIT = 10;
 
 export async function researchLearningResources(input: {
   topic: string;
@@ -22,11 +22,17 @@ export async function researchLearningResources(input: {
   const base = `${input.topic} ${input.experienceLevel ?? ''} ${input.goal ?? ''}`.trim();
   const searches: Array<{ kind: ResourceKind; query: string }> = [
     { kind: 'officialDocs', query: `${base} official documentation docs latest 2026 current best practices` },
+    { kind: 'officialDocs', query: `${base} updated framework tools official docs migration guide 2025 2026` },
     { kind: 'youtube', query: `${base} YouTube long form tutorial crash course project 2025 2026` },
+    { kind: 'youtube', query: `site:youtube.com/watch ${base} full course tutorial project 2025 2026` },
     { kind: 'github', query: `${base} GitHub repository examples projects stars 2025 2026` },
+    { kind: 'github', query: `site:github.com ${base} roadmap project example best practices 2025 2026` },
     { kind: 'article', query: `${base} tutorial guide best practices updated 2025 2026` },
+    { kind: 'article', query: `${base} blog modern best practices latest tutorial 2025 2026` },
     { kind: 'course', query: `${base} course curriculum learning path roadmap 2025 2026` },
+    { kind: 'course', query: `${base} recommended course certification bootcamp updated 2025 2026` },
     { kind: 'community', query: `${base} community recommendations reddit hacker news roadmap 2025 2026` },
+    { kind: 'community', query: `${base} community recommended resources discussion latest tools 2025 2026` },
   ];
 
   const resultSets = await Promise.all(
@@ -42,7 +48,7 @@ export async function researchLearningResources(input: {
 
   const deduped = dedupeResources(resultSets.flat())
     .sort((a, b) => scoreResource(b) - scoreResource(a))
-    .slice(0, 36);
+    .slice(0, 60);
   const withGithubMetadata = await Promise.all(
     deduped.map(async (resource) => {
       if (resource.kind !== 'github') {
