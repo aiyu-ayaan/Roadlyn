@@ -192,12 +192,25 @@ model AITokenUsage {
 
 // Placeholder for future roadmap model
 model Roadmap {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                  String    @id @default(cuid())
+  userId              String
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title               String
+  topic               String?
+  experienceLevel     String?
+  goal                String?
+  weeklyHours         Int?
+  status              String    @default("QUEUED")
+  progress            Int       @default(0)
+  generatedCourse     Json?
+  researchedResources Json?
+  providerId          String?
+  modelId             String?
+  errorMessage        String?
+  completedAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   @@index([userId])
+  @@index([status])
 }

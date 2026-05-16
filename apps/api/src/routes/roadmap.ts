@@ -1,8 +1,10 @@
 import { FastifyInstance } from 'fastify';
+import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { requireScope } from '../middleware/auth';
 import { AIGatewayService } from '../services/ai-gateway-service';
 import { ResearchResource, researchLearningResources } from '../services/web-research-service';
+import { ApiError } from '../utils/errors';
 
 const generateSchema = z.object({
   topic: z.string().min(1),
@@ -15,6 +17,26 @@ const generateSchema = z.object({
 });
 
 type GenerateInput = z.infer<typeof generateSchema>;
+
+interface RoadmapRecord {
+  id: string;
+  userId: string;
+  title: string;
+  topic: string | null;
+  experienceLevel: string | null;
+  goal: string | null;
+  weeklyHours: number | null;
+  status: string;
+  progress: number;
+  generatedCourse: unknown;
+  researchedResources: unknown;
+  providerId: string | null;
+  modelId: string | null;
+  errorMessage: string | null;
+  completedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 export async function roadmapRoutes(fastify: FastifyInstance) {
   const gateway = new AIGatewayService(fastify.db, fastify.redis);
@@ -31,18 +53,44 @@ export async function roadmapRoutes(fastify: FastifyInstance) {
       return { success: true, data: [] };
     }
 
-    const roadmaps = await fastify.db.roadmap.findMany({
-      where: { userId: request.auth.userId },
-      orderBy: { updatedAt: 'desc' },
-      select: {
-        id: true,
-        title: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+    const roadmaps = await fastify.db.$queryRawUnsafe<RoadmapRecord[]>(
+      `SELECT "id", "title", "topic", "status", "progress", "errorMessage", "completedAt", "createdAt", "updatedAt"
+       FROM "Roadmap"
+       WHERE "userId" = $1
+       ORDER BY "updatedAt" DESC`,
+      request.auth.userId,
+    );
 
     return { success: true, data: roadmaps };
+  });
+
+  fastify.get('/roadmaps/:id', {
+    preHandler: requireScope('ai:read'),
+    schema: {
+      tags: ['Roadmaps'],
+      summary: 'Get a generated roadmap course',
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request) => {
+    if (!request.auth?.userId) {
+      throw new ApiError(403, 'USER_SESSION_REQUIRED', 'Roadmap details require a user session');
+    }
+
+    const params = z.object({ id: z.string().min(1) }).parse(request.params);
+    const [roadmap] = await fastify.db.$queryRawUnsafe<RoadmapRecord[]>(
+      `SELECT *
+       FROM "Roadmap"
+       WHERE "id" = $1 AND "userId" = $2
+       LIMIT 1`,
+      params.id,
+      request.auth.userId,
+    );
+
+    if (!roadmap) {
+      throw new ApiError(404, 'ROADMAP_NOT_FOUND', 'Roadmap not found');
+    }
+
+    return { success: true, data: roadmap };
   });
 
   fastify.post('/roadmaps/generate', {
@@ -53,42 +101,144 @@ export async function roadmapRoutes(fastify: FastifyInstance) {
       security: [{ bearerAuth: [] }],
     },
   }, async (request) => {
-    const input = generateSchema.parse(request.body);
-    const researchedResources = await researchLearningResources({
-      topic: input.topic,
-      experienceLevel: input.experienceLevel,
-      goal: input.goal,
-    });
-
-    const result = await gateway.generateText({
-      userId: request.auth?.userId,
-      providerId: input.providerId,
-      modelId: input.modelId,
-      useUserDefaults: input.useUserDefaults,
-      operation: 'roadmap.generate',
-      system: buildCourseSystemPrompt(),
-      prompt: buildCoursePrompt(input, researchedResources),
-    });
-    const roadmap = extractJson(result.text) ?? buildFallbackCourse(input, researchedResources);
-
-    if (request.auth?.userId) {
-      await fastify.db.roadmap.create({
-        data: {
-          userId: request.auth.userId,
-          title: roadmap.title,
-        },
-      });
+    if (!request.auth?.userId) {
+      throw new ApiError(403, 'USER_SESSION_REQUIRED', 'Background roadmap generation requires a user session');
     }
+
+    const input = generateSchema.parse(request.body);
+    const roadmapId = randomUUID();
+    const [roadmap] = await fastify.db.$queryRawUnsafe<RoadmapRecord[]>(
+      `INSERT INTO "Roadmap"
+        ("id", "userId", "title", "topic", "experienceLevel", "goal", "weeklyHours", "status", "progress", "providerId", "modelId", "createdAt", "updatedAt")
+       VALUES
+        ($1, $2, $3, $4, $5, $6, $7, 'QUEUED', 5, $8, $9, NOW(), NOW())
+       RETURNING "id", "title", "topic", "status", "progress", "createdAt", "updatedAt"`,
+      roadmapId,
+      request.auth.userId,
+      `${input.topic} roadmap`,
+      input.topic,
+      input.experienceLevel ?? null,
+      input.goal ?? null,
+      input.weeklyHours ?? null,
+      input.providerId ?? null,
+      input.modelId ?? null,
+    );
+
+    void runRoadmapGenerationJob({
+      fastify,
+      gateway,
+      roadmapId: roadmap.id,
+      userId: request.auth.userId,
+      input,
+    });
 
     return {
       success: true,
       data: {
-        ...result,
+        roadmapId: roadmap.id,
         roadmap,
-        researchedResources,
+        status: roadmap.status,
       },
     };
   });
+}
+
+async function runRoadmapGenerationJob(input: {
+  fastify: FastifyInstance;
+  gateway: AIGatewayService;
+  roadmapId: string;
+  userId: string;
+  input: GenerateInput;
+}) {
+  const { fastify, gateway, roadmapId, userId } = input;
+
+  try {
+    await updateRoadmapJob(fastify, roadmapId, {
+      status: 'RUNNING',
+      progress: 15,
+    });
+
+    const researchedResources = await researchLearningResources({
+      topic: input.input.topic,
+      experienceLevel: input.input.experienceLevel,
+      goal: input.input.goal,
+    });
+
+    await updateRoadmapJob(fastify, roadmapId, {
+      researchedResources,
+      progress: 45,
+    });
+
+    const result = await gateway.generateText({
+      userId,
+      providerId: input.input.providerId,
+      modelId: input.input.modelId,
+      useUserDefaults: input.input.useUserDefaults,
+      operation: 'roadmap.generate',
+      system: buildCourseSystemPrompt(),
+      prompt: buildCoursePrompt(input.input, researchedResources),
+    });
+    const course = extractJson(result.text) ?? buildFallbackCourse(input.input, researchedResources);
+
+    await updateRoadmapJob(fastify, roadmapId, {
+      title: course.title,
+      status: 'COMPLETED',
+      progress: 100,
+      generatedCourse: course,
+      researchedResources,
+      providerId: result.providerId,
+      modelId: result.modelId,
+      completedAt: new Date(),
+    });
+  } catch (error) {
+    await updateRoadmapJob(fastify, roadmapId, {
+      status: 'FAILED',
+      progress: 100,
+      errorMessage: error instanceof Error ? error.message : 'Roadmap generation failed',
+    });
+
+    fastify.log.error(error);
+  }
+}
+
+async function updateRoadmapJob(
+  fastify: FastifyInstance,
+  roadmapId: string,
+  data: {
+    title?: string;
+    status?: string;
+    progress?: number;
+    generatedCourse?: unknown;
+    researchedResources?: unknown;
+    providerId?: string;
+    modelId?: string;
+    errorMessage?: string;
+    completedAt?: Date;
+  },
+) {
+  const assignments: string[] = ['"updatedAt" = NOW()'];
+  const values: unknown[] = [];
+
+  const addValue = (column: string, value: unknown, cast?: string) => {
+    values.push(value);
+    assignments.push(`"${column}" = $${values.length}${cast ?? ''}`);
+  };
+
+  if (data.title !== undefined) addValue('title', data.title);
+  if (data.status !== undefined) addValue('status', data.status);
+  if (data.progress !== undefined) addValue('progress', data.progress);
+  if (data.generatedCourse !== undefined) addValue('generatedCourse', JSON.stringify(data.generatedCourse), '::jsonb');
+  if (data.researchedResources !== undefined) addValue('researchedResources', JSON.stringify(data.researchedResources), '::jsonb');
+  if (data.providerId !== undefined) addValue('providerId', data.providerId);
+  if (data.modelId !== undefined) addValue('modelId', data.modelId);
+  if (data.errorMessage !== undefined) addValue('errorMessage', data.errorMessage);
+  if (data.completedAt !== undefined) addValue('completedAt', data.completedAt);
+
+  values.push(roadmapId);
+  await fastify.db.$executeRawUnsafe(
+    `UPDATE "Roadmap" SET ${assignments.join(', ')} WHERE "id" = $${values.length}`,
+    ...values,
+  );
 }
 
 function buildCourseSystemPrompt() {

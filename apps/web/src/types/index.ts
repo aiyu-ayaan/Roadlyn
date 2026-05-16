@@ -204,12 +204,31 @@ export interface RoadmapGenerateRequest {
 }
 
 export interface RoadmapGenerateResult {
-  text: string;
-  providerId: string;
-  modelId: string;
-  usage?: unknown;
-  roadmap?: GeneratedCourse | null;
-  researchedResources?: CourseResource[];
+  roadmapId: string;
+  status: RoadmapStatus;
+  roadmap: RoadmapDetail;
+}
+
+export type RoadmapStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | string;
+
+export interface RoadmapDetail {
+  id: string;
+  userId?: string;
+  title: string;
+  topic?: string | null;
+  experienceLevel?: string | null;
+  goal?: string | null;
+  weeklyHours?: number | null;
+  status: RoadmapStatus;
+  progress: number;
+  generatedCourse?: GeneratedCourse | null;
+  researchedResources?: CourseResource[] | null;
+  providerId?: string | null;
+  modelId?: string | null;
+  errorMessage?: string | null;
+  completedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CourseResource {

@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { Plus, Sparkles } from 'lucide-react';
+import { Loader2, Plus, Sparkles } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
 import { useRoadmaps } from '@/hooks/use-roadmaps';
 
 export default function RoadmapsPage() {
@@ -30,12 +31,28 @@ export default function RoadmapsPage() {
       ) : roadmaps.data?.length ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {roadmaps.data.map((roadmap) => (
-            <Card key={roadmap.id} className="p-5 transition hover:border-blue-400/30">
-              <h2 className="text-lg font-semibold">{roadmap.title}</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Created {new Date(roadmap.createdAt).toLocaleDateString()}
-              </p>
-            </Card>
+            <Link key={roadmap.id} href={`/roadmaps/${roadmap.id}`}>
+              <Card className="p-5 transition hover:border-blue-400/30">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold">{roadmap.title}</h2>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {roadmap.topic ?? 'Generated course'} · {new Date(roadmap.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  {roadmap.status === 'QUEUED' || roadmap.status === 'RUNNING' ? (
+                    <Loader2 className="size-4 animate-spin text-blue-300" />
+                  ) : null}
+                </div>
+                <div className="mt-4">
+                  <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{roadmap.status.toLowerCase()}</span>
+                    <span>{roadmap.progress}%</span>
+                  </div>
+                  <Progress value={roadmap.progress} />
+                </div>
+              </Card>
+            </Link>
           ))}
         </div>
       ) : (
