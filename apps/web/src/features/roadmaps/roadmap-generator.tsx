@@ -1,7 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Loader2, Search, Sparkles } from 'lucide-react';
+import { BookOpen, Brain, CheckSquare, Github, Loader2, PlaySquare, Search, Sparkles, Trophy } from 'lucide-react';
 import { useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
@@ -20,6 +20,17 @@ const generationSchema = z.object({
   experienceLevel: z.string().min(1),
   goal: z.string().min(2),
   weeklyHours: z.coerce.number().min(1).max(80),
+  generationOptions: z.object({
+    liveSearch: z.boolean(),
+    youtubeVideos: z.boolean(),
+    githubRepos: z.boolean(),
+    officialDocs: z.boolean(),
+    projects: z.boolean(),
+    quizzes: z.boolean(),
+    interviewPrep: z.boolean(),
+    summaries: z.boolean(),
+    certifications: z.boolean(),
+  }),
   providerId: z.string().optional(),
   modelId: z.string().optional(),
 });
@@ -37,6 +48,17 @@ export function RoadmapGenerator() {
       experienceLevel: 'beginner',
       goal: 'Become job-ready with portfolio projects',
       weeklyHours: 8,
+      generationOptions: {
+        liveSearch: true,
+        youtubeVideos: true,
+        githubRepos: true,
+        officialDocs: true,
+        projects: true,
+        quizzes: true,
+        interviewPrep: true,
+        summaries: true,
+        certifications: true,
+      },
       providerId: '',
       modelId: '',
     },
@@ -89,6 +111,34 @@ export function RoadmapGenerator() {
           <Field label="Weekly hours" error={form.formState.errors.weeklyHours?.message}>
             <Input type="number" {...form.register('weeklyHours')} />
           </Field>
+          <div>
+            <p className="text-sm font-medium">Generation tasks</p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {generationTasks.map((task) => {
+                const Icon = task.icon;
+
+                return (
+                  <label
+                    key={task.name}
+                    className="flex cursor-pointer items-start gap-3 rounded-lg border border-white/10 bg-black/20 p-3 text-sm transition hover:border-blue-400/30"
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      {...form.register(`generationOptions.${task.name}`)}
+                    />
+                    <span>
+                      <span className="flex items-center gap-2 font-medium">
+                        <Icon className="size-4 text-blue-300" />
+                        {task.label}
+                      </span>
+                      <span className="mt-1 block text-xs leading-5 text-muted-foreground">{task.description}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
           <Field label="Provider">
             <Select value={form.watch('providerId')} onValueChange={(value) => {
               form.setValue('providerId', value);
@@ -129,8 +179,78 @@ export function RoadmapGenerator() {
             After you start generation, Roadlyn opens the course page immediately. The page polls the job until live
             research and AI course generation are complete.
           </p>
+          <div className="mt-6 grid gap-3 text-left sm:grid-cols-2">
+            {generationTasks.slice(0, 6).map((task) => {
+              const Icon = task.icon;
+
+              return (
+                <div key={task.name} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                  <Icon className="size-4 text-blue-300" />
+                  <p className="mt-2 text-sm font-medium">{task.label}</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{task.description}</p>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </Card>
     </section>
   );
 }
+
+const generationTasks = [
+  {
+    name: 'liveSearch',
+    label: 'Live search',
+    description: 'Find current tutorials, courses, docs, articles, and communities.',
+    icon: Search,
+  },
+  {
+    name: 'youtubeVideos',
+    label: 'YouTube lessons',
+    description: 'Prefer videos that can be opened in the course player.',
+    icon: PlaySquare,
+  },
+  {
+    name: 'githubRepos',
+    label: 'GitHub labs',
+    description: 'Add repositories, examples, and practice code paths.',
+    icon: Github,
+  },
+  {
+    name: 'officialDocs',
+    label: 'Official docs',
+    description: 'Anchor every module with trusted primary references.',
+    icon: BookOpen,
+  },
+  {
+    name: 'projects',
+    label: 'Projects',
+    description: 'Generate guided tasks, portfolio builds, and capstones.',
+    icon: CheckSquare,
+  },
+  {
+    name: 'quizzes',
+    label: 'Quizzes',
+    description: 'Add self-check questions with answers per module.',
+    icon: Brain,
+  },
+  {
+    name: 'interviewPrep',
+    label: 'Interview prep',
+    description: 'Create practical questions and portfolio talking points.',
+    icon: Trophy,
+  },
+  {
+    name: 'summaries',
+    label: 'Course summaries',
+    description: 'Generate explainers between lessons and module recaps.',
+    icon: Sparkles,
+  },
+  {
+    name: 'certifications',
+    label: 'Certificates',
+    description: 'Suggest relevant certificates and external credentials.',
+    icon: Trophy,
+  },
+] as const;

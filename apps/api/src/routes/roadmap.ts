@@ -11,12 +11,35 @@ const generateSchema = z.object({
   experienceLevel: z.string().optional(),
   goal: z.string().optional(),
   weeklyHours: z.number().int().positive().max(80).optional(),
+  generationOptions: z.object({
+    liveSearch: z.boolean().default(true),
+    youtubeVideos: z.boolean().default(true),
+    githubRepos: z.boolean().default(true),
+    officialDocs: z.boolean().default(true),
+    projects: z.boolean().default(true),
+    quizzes: z.boolean().default(true),
+    interviewPrep: z.boolean().default(true),
+    summaries: z.boolean().default(true),
+    certifications: z.boolean().default(true),
+  }).default({}),
   providerId: z.string().optional(),
   modelId: z.string().optional(),
   useUserDefaults: z.boolean().default(false),
 });
 
 type GenerateInput = z.infer<typeof generateSchema>;
+
+const DEFAULT_GENERATION_OPTIONS: GenerateInput['generationOptions'] = {
+  liveSearch: true,
+  youtubeVideos: true,
+  githubRepos: true,
+  officialDocs: true,
+  projects: true,
+  quizzes: true,
+  interviewPrep: true,
+  summaries: true,
+  certifications: true,
+};
 
 interface RoadmapRecord {
   id: string;
@@ -101,6 +124,7 @@ export async function roadmapRoutes(fastify: FastifyInstance) {
           experienceLevel: roadmap.experienceLevel ?? undefined,
           goal: roadmap.goal ?? undefined,
           weeklyHours: roadmap.weeklyHours ?? undefined,
+          generationOptions: DEFAULT_GENERATION_OPTIONS,
           useUserDefaults: true,
         },
         roadmap.researchedResources as ResearchResource[],
@@ -407,6 +431,7 @@ function buildCoursePrompt(input: GenerateInput, researchedResources: ResearchRe
     requiredOutputShape: {
       title: '',
       overview: '',
+      courseSummary: '',
       estimatedDuration: '',
       skillLevel: '',
       skillOutcomes: [''],
@@ -424,6 +449,8 @@ function buildCoursePrompt(input: GenerateInput, researchedResources: ResearchRe
           exercises: [''],
           miniProjects: [''],
           quizzes: [{ question: '', answer: '' }],
+          lessonNotes: [''],
+          recap: '',
           difficultyLevel: 'beginner',
         },
       ],
@@ -451,6 +478,8 @@ function buildCoursePrompt(input: GenerateInput, researchedResources: ResearchRe
     },
     qualityRules: [
       'The roadmap must feel like a Udemy course, roadmap.sh progression, Coursera curriculum, and personalized mentor.',
+      'Make each phase playable as an online course module with concise notes, practice tasks, resources, and a recap.',
+      'Create original course content between external resources: summaries, analogies, checklists, recaps, and next actions.',
       'Start from fundamentals and progressively increase difficulty.',
       'Balance theory, practical exercises, projects, revision checkpoints, and interview prep.',
       'Include beginner projects, intermediate projects, and an advanced capstone project.',
@@ -459,6 +488,17 @@ function buildCoursePrompt(input: GenerateInput, researchedResources: ResearchRe
       'Use newest tools and best practices visible in the live research payload.',
       'Return clean structured JSON only.',
     ],
+    enabledGenerationTasks: {
+      liveSearch: input.generationOptions.liveSearch,
+      youtubeVideos: input.generationOptions.youtubeVideos,
+      githubRepos: input.generationOptions.githubRepos,
+      officialDocs: input.generationOptions.officialDocs,
+      projects: input.generationOptions.projects,
+      quizzes: input.generationOptions.quizzes,
+      interviewPrep: input.generationOptions.interviewPrep,
+      summaries: input.generationOptions.summaries,
+      certifications: input.generationOptions.certifications,
+    },
   });
 }
 
@@ -490,6 +530,7 @@ function buildFallbackCourse(input: GenerateInput, resources: ResearchResource[]
   return {
     title: `${topic} Live-Researched Learning Roadmap`,
     overview: `A practical roadmap for ${topic} generated from live web research, with current resources grouped into foundations, applied practice, portfolio projects, and interview preparation.`,
+    courseSummary: `Study ${topic} in a course-player flow: learn the core ideas, open vetted videos and links inside Roadlyn, complete practice tasks, ship projects, and finish with interview-ready portfolio notes.`,
     estimatedDuration: `${Math.max(8, Math.ceil((input.weeklyHours ?? 8) * 2))} weeks`,
     skillLevel: input.experienceLevel ?? 'beginner',
     skillOutcomes: [
@@ -601,6 +642,11 @@ function buildFallbackPhase(
         answer: 'Official documentation and actively maintained repositories, then current high-quality tutorials.',
       },
     ],
+    lessonNotes: [
+      `Read one trusted source, watch one guided lesson, then explain the ${title.toLowerCase()} concept in your own words.`,
+      'Keep a running notebook with commands, definitions, decisions, and problems you solved.',
+    ],
+    recap: `By the end of ${title.toLowerCase()}, you should be able to explain the key ideas, use the linked resources without hand-holding, and produce a small proof of work.`,
     difficultyLevel,
   };
 }

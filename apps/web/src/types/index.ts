@@ -198,6 +198,17 @@ export interface RoadmapGenerateRequest {
   experienceLevel?: string;
   goal?: string;
   weeklyHours?: number;
+  generationOptions?: {
+    liveSearch?: boolean;
+    youtubeVideos?: boolean;
+    githubRepos?: boolean;
+    officialDocs?: boolean;
+    projects?: boolean;
+    quizzes?: boolean;
+    interviewPrep?: boolean;
+    summaries?: boolean;
+    certifications?: boolean;
+  };
   providerId?: string;
   modelId?: string;
   useUserDefaults?: boolean;
@@ -246,6 +257,7 @@ export interface CourseResource {
 export interface GeneratedCourse {
   title: string;
   overview: string;
+  courseSummary?: string;
   estimatedDuration: string;
   skillLevel: string;
   skillOutcomes?: string[];
@@ -306,6 +318,8 @@ export interface CoursePhase {
     question: string;
     answer: string;
   }>;
+  lessonNotes?: string[];
+  recap?: string;
   difficultyLevel: 'beginner' | 'intermediate' | 'advanced' | string;
 }
 
