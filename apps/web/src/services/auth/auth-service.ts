@@ -1,4 +1,5 @@
 import { apiClient } from '@/services/api';
+import { appConfig } from '@/config/app';
 import {
   ApiResponse,
   AuthUser,
@@ -19,6 +20,12 @@ export interface RegisterClientInput {
 }
 
 export const authService = {
+  getGithubLoginUrl(next = '/dashboard') {
+    const url = new URL('/api/auth/github', appConfig.apiUrl);
+    url.searchParams.set('next', next);
+
+    return url.toString();
+  },
   async createOAuthClient(input: RegisterClientInput) {
     const { data } = await apiClient.post<ApiResponse<OAuthClientResponse> & { warning?: string }>(
       '/api/auth/oauth-clients',

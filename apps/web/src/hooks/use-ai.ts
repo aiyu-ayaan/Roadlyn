@@ -23,6 +23,15 @@ export function useProviderKeys(providerId?: string) {
   });
 }
 
+export function useDeleteProviderKey() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => aiService.deleteKey(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.keys }),
+  });
+}
+
 export function useCreateProvider() {
   const queryClient = useQueryClient();
 

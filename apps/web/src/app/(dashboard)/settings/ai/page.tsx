@@ -8,10 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { useProviders } from '@/hooks/use-ai';
 import { aiService } from '@/services/ai/ai-service';
+import { useAuthStore } from '@/stores/auth';
 
 export default function AISettingsPage() {
+  const user = useAuthStore((state) => state.user);
   const providers = useProviders();
-  const [userId, setUserId] = useState('');
   const [providerId, setProviderId] = useState('');
   const [fallbackProviderId, setFallbackProviderId] = useState('');
   const [modelId, setModelId] = useState('');
@@ -25,15 +26,13 @@ export default function AISettingsPage() {
     <div>
       <PageHeader
         title="AI preferences"
-        description="Set per-user default provider, model, BYOK mode, and fallback provider."
+        description="Set your default provider, model, BYOK mode, and fallback provider."
       />
       <Card className="max-w-2xl space-y-4 p-5">
-        <input
-          className="focus-ring h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-          placeholder="User ID"
-          value={userId}
-          onChange={(event) => setUserId(event.target.value)}
-        />
+        <div className="rounded-md border border-border bg-secondary/40 p-3 text-sm">
+          <p className="font-medium">{user?.name ?? 'Signed-in user'}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{user?.email ?? user?.id ?? 'User context will load after login.'}</p>
+        </div>
         <Select value={providerId} onValueChange={setProviderId}>
           <SelectTrigger><SelectValue placeholder="Default provider" /></SelectTrigger>
           <SelectContent>
@@ -63,10 +62,19 @@ export default function AISettingsPage() {
           <Switch checked={useOwnKeys} onCheckedChange={setUseOwnKeys} />
         </label>
         <Button
-          disabled={!userId || !providerId || !modelId}
+          disabled={!user?.id || !providerId || !modelId}
           onClick={async () => {
-            await aiService.setDefaultProvider({ userId, providerId, fallbackProviderId, useOwnKeys });
-            await aiService.setDefaultModel({ userId, modelId });
+            if (!user?.id) {
+              return;
+            }
+
+            await aiService.setDefaultProvider({
+              userId: user.id,
+              providerId,
+              fallbackProviderId: fallbackProviderId || undefined,
+              useOwnKeys,
+            });
+            await aiService.setDefaultModel({ userId: user.id, modelId });
           }}
         >
           Save AI defaults

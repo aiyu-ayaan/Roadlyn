@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Loader2 } from 'lucide-react';
+import { Github, Loader2 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Field } from '@/components/forms/field';
@@ -39,24 +39,45 @@ export function LoginForm() {
   }
 
   return (
-    <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
-      <Field label="Client ID" error={form.formState.errors.clientId?.message}>
-        <Input autoComplete="username" {...form.register('clientId')} />
-      </Field>
-      <Field label="Client secret" error={form.formState.errors.clientSecret?.message}>
-        <Input type="password" autoComplete="current-password" {...form.register('clientSecret')} />
-      </Field>
-      <Field label="Scopes" error={form.formState.errors.scope?.message}>
-        <Input {...form.register('scope')} />
-      </Field>
-      <Button className="w-full" disabled={form.formState.isSubmitting}>
-        {form.formState.isSubmitting ? <Loader2 className="animate-spin" /> : null}
-        Sign in
+    <div className="space-y-5">
+      <Button
+        className="w-full"
+        type="button"
+        onClick={() => {
+          window.location.href = authService.getGithubLoginUrl(
+            searchParams.get('next') ?? '/dashboard',
+          );
+        }}
+      >
+        <Github />
+        Continue with GitHub
       </Button>
-      <div className="flex justify-between text-xs text-muted-foreground">
-        <Link href="/forgot-password">Forgot password</Link>
-        <Link href="/register">Create API client</Link>
+
+      <div className="flex items-center gap-3 text-xs uppercase tracking-wide text-muted-foreground">
+        <span className="h-px flex-1 bg-border" />
+        API client access
+        <span className="h-px flex-1 bg-border" />
       </div>
-    </form>
+
+      <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
+        <Field label="Client ID" error={form.formState.errors.clientId?.message}>
+          <Input autoComplete="username" {...form.register('clientId')} />
+        </Field>
+        <Field label="Client secret" error={form.formState.errors.clientSecret?.message}>
+          <Input type="password" autoComplete="current-password" {...form.register('clientSecret')} />
+        </Field>
+        <Field label="Scopes" error={form.formState.errors.scope?.message}>
+          <Input {...form.register('scope')} />
+        </Field>
+        <Button className="w-full" variant="outline" disabled={form.formState.isSubmitting}>
+          {form.formState.isSubmitting ? <Loader2 className="animate-spin" /> : null}
+          Sign in with client credentials
+        </Button>
+        <div className="flex justify-between text-xs text-muted-foreground">
+          <Link href="/forgot-password">Forgot password</Link>
+          <Link href="/register">Create API client</Link>
+        </div>
+      </form>
+    </div>
   );
 }

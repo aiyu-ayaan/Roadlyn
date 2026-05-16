@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { useAddProviderKey, useCreateModel, useCreateProvider } from '@/hooks/use-ai';
+import { useAuthStore } from '@/stores/auth';
 import { AIProvider, AIProviderType } from '@/types';
 
 const providerTypes: AIProviderType[] = [
@@ -44,11 +45,11 @@ const keySchema = z.object({
   providerId: z.string().min(1),
   keyName: z.string().min(1),
   apiKey: z.string().min(1),
-  userId: z.string().optional(),
   isDefault: z.boolean().default(false),
 });
 
 export function ProviderForms({ providers }: { providers: AIProvider[] }) {
+  const user = useAuthStore((state) => state.user);
   const createProvider = useCreateProvider();
   const createModel = useCreateModel();
   const addKey = useAddProviderKey();
@@ -62,7 +63,7 @@ export function ProviderForms({ providers }: { providers: AIProvider[] }) {
   });
   const keyForm = useForm<z.infer<typeof keySchema>>({
     resolver: zodResolver(keySchema),
-    defaultValues: { providerId: '', keyName: '', apiKey: '', userId: '', isDefault: false },
+    defaultValues: { providerId: '', keyName: '', apiKey: '', isDefault: true },
   });
 
   return (
@@ -122,16 +123,19 @@ export function ProviderForms({ providers }: { providers: AIProvider[] }) {
       </Card>
       <Card className="p-5">
         <h2 className="mb-4 font-semibold">Add API key</h2>
-        <form className="space-y-4" onSubmit={keyForm.handleSubmit((values) => addKey.mutateAsync({ ...values, userId: values.userId || undefined }))}>
+        <form
+          className="space-y-4"
+          onSubmit={keyForm.handleSubmit(async (values) => {
+            await addKey.mutateAsync({ ...values, userId: user?.id });
+            keyForm.reset({ providerId: values.providerId, keyName: '', apiKey: '', isDefault: true });
+          })}
+        >
           <ProviderSelect providers={providers} value={keyForm.watch('providerId')} onChange={(value) => keyForm.setValue('providerId', value)} />
           <Field label="Key name" error={keyForm.formState.errors.keyName?.message}>
             <Input {...keyForm.register('keyName')} />
           </Field>
           <Field label="API key" error={keyForm.formState.errors.apiKey?.message}>
             <Input type="password" {...keyForm.register('apiKey')} />
-          </Field>
-          <Field label="User ID" error={keyForm.formState.errors.userId?.message}>
-            <Input placeholder="Optional for BYOK" {...keyForm.register('userId')} />
           </Field>
           <label className="flex items-center justify-between rounded-md border border-border p-3 text-sm">
             Default key

@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useProviders } from '@/hooks/use-ai';
+import { useProviderKeys, useProviders } from '@/hooks/use-ai';
 import { useRoadmaps } from '@/hooks/use-roadmaps';
 import { useRealtime } from '@/hooks/use-realtime';
 import { useRealtimeStore } from '@/stores/realtime';
@@ -14,9 +14,11 @@ import { useRealtimeStore } from '@/stores/realtime';
 export default function DashboardPage() {
   useRealtime();
   const providers = useProviders();
+  const keys = useProviderKeys();
   const roadmaps = useRoadmaps();
   const events = useRealtimeStore((state) => state.events);
   const enabledProviders = providers.data?.filter((provider) => provider.enabled).length ?? 0;
+  const modelCount = providers.data?.reduce((total, provider) => total + (provider.models?.length ?? 0), 0) ?? 0;
 
   return (
     <div>
@@ -32,11 +34,12 @@ export default function DashboardPage() {
           </Button>
         }
       />
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         {[
           { label: 'Roadmaps', value: roadmaps.data?.length ?? 0, icon: Map },
           { label: 'Providers', value: providers.data?.length ?? 0, icon: Bot },
-          { label: 'Enabled', value: enabledProviders, icon: KeyRound },
+          { label: 'Models', value: modelCount, icon: Sparkles },
+          { label: 'Keys', value: keys.data?.length ?? 0, icon: KeyRound },
           { label: 'Events', value: events.length, icon: Activity },
         ].map((item) => {
           const Icon = item.icon;
@@ -64,7 +67,7 @@ export default function DashboardPage() {
                 <div>
                   <p className="font-medium">{provider.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {provider.models?.length ?? 0} models · {provider.providerType}
+                    {provider.models?.length ?? 0} models · {provider.providerType} · {enabledProviders} enabled
                   </p>
                 </div>
                 <Badge variant={provider.enabled ? 'success' : 'outline'}>
