@@ -36,17 +36,10 @@ This script:
 
 ### 3. Configure Environment
 
-Edit `.env` and `.env.local` files with your values:
+Edit the single root `.env` file with your values:
 
 ```bash
-# .env (root)
-# Add your configuration
-
-# apps/api/.env
-# Add backend configuration
-
-# apps/web/.env.local
-# Add frontend configuration
+cp .env.example .env
 ```
 
 ### 4. Start Development
@@ -517,3 +510,4 @@ pnpm type-check
 ---
 
 **Last Updated**: May 2026
+

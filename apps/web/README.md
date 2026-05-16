@@ -63,7 +63,7 @@ No AI provider names, model IDs, API keys, or provider configs are hardcoded int
 pnpm dev:web
 ```
 
-Set `NEXT_PUBLIC_API_URL` and optionally `NEXT_PUBLIC_WS_URL` in the root `.env.local`.
+Set `NEXT_PUBLIC_API_URL` and optionally `NEXT_PUBLIC_WS_URL` in the root `.env`.
 
 ## Verification
 
@@ -72,3 +72,4 @@ pnpm --filter web type-check
 pnpm --filter web lint
 pnpm --filter web build
 ```
+

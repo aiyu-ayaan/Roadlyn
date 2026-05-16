@@ -89,8 +89,6 @@ roadlyn/
 
 3. **Configure environment variables**
    - Copy `.env.example` to `.env` and update values
-   - Copy `apps/api/.env.example` to `apps/api/.env`
-   - Copy `apps/web/.env.example` to `apps/web/.env.local`
 
 4. **Start development environment**
    ```bash
@@ -311,20 +309,20 @@ GitHub Actions workflows should be configured in `.github/workflows/` for:
 
 1. **Install dependencies**: `make install`
 2. **Set up environment**: `make dev-setup`
-3. **Configure .env files** with your settings
+3. **Configure the root `.env` file** with your settings
 4. **Start development**: `make dev`
 5. **Read DEVELOPMENT.md** for workflow details
 
 ## 📝 Environment Variables
 
-### Frontend (`.env.local`)
+### Frontend (root `.env`)
 
 ```
 NEXT_PUBLIC_API_URL=http://localhost:3001
 NEXT_PUBLIC_APP_NAME=Roadlyn
 ```
 
-### Backend (`.env`)
+### Backend (root `.env`)
 
 ```
 API_PORT=3001
@@ -334,7 +332,7 @@ REDIS_URL=redis://localhost:6379
 JWT_SECRET=your-secret-key
 ```
 
-See `.env.example` files for complete lists.
+See the root `.env.example` for the complete list.
 
 ## 🤝 Contributing
 
@@ -352,3 +350,4 @@ Roadlyn Development Team
 
 **Last Updated**: May 2026  
 **Status**: Initial Scaffolding ✨
+
