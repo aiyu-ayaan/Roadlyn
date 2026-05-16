@@ -1,11 +1,11 @@
 'use client';
 
-import { KeyRound, Loader2, PlugZap, Trash2 } from 'lucide-react';
+import { KeyRound, Loader2, PlugZap, Star, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { useDeleteProviderKey, useUpdateProvider } from '@/hooks/use-ai';
+import { useDeleteProviderKey, useSetPlatformDefaultProvider, useUpdateProvider } from '@/hooks/use-ai';
 import { aiService } from '@/services/ai/ai-service';
 import { AIProvider, ProviderAPIKey } from '@/types';
 
@@ -18,6 +18,7 @@ export function ProviderList({
 }) {
   const updateProvider = useUpdateProvider();
   const deleteKey = useDeleteProviderKey();
+  const setDefaultProvider = useSetPlatformDefaultProvider();
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -40,6 +41,7 @@ export function ProviderList({
                   <Badge variant={provider.enabled ? 'success' : 'outline'}>
                     {provider.enabled ? 'Enabled' : 'Disabled'}
                   </Badge>
+                  {provider.isDefault ? <Badge variant="secondary">Default</Badge> : null}
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {provider.providerType} · {provider.baseUrl ?? 'Default endpoint'}
@@ -106,13 +108,22 @@ export function ProviderList({
               )}
             </div>
             <Button
-              className="mt-4"
+              className="mt-4 mr-2"
               variant="outline"
               disabled={!defaultModel}
               onClick={() => defaultModel && aiService.testProvider({ providerId: provider.id, modelId: defaultModel.id })}
             >
               {false ? <Loader2 className="animate-spin" /> : <PlugZap />}
               Test connection
+            </Button>
+            <Button
+              className="mt-4"
+              variant={provider.isDefault ? 'secondary' : 'outline'}
+              disabled={provider.isDefault || setDefaultProvider.isPending}
+              onClick={() => setDefaultProvider.mutate(provider.id)}
+            >
+              {setDefaultProvider.isPending ? <Loader2 className="animate-spin" /> : <Star />}
+              {provider.isDefault ? 'Platform default' : 'Set default'}
             </Button>
           </Card>
         );
