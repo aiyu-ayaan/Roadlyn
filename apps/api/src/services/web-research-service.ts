@@ -1,0 +1,219 @@
+type ResourceKind = 'officialDocs' | 'youtube' | 'github' | 'article' | 'course' | 'community';
+
+export interface ResearchResource {
+  kind: ResourceKind;
+  title: string;
+  url: string;
+  source: string;
+  summary?: string;
+  freshnessRelevance: string;
+  stars?: number | null;
+  duration?: string | null;
+  channelName?: string | null;
+}
+
+const SEARCH_LIMIT = 6;
+
+export async function researchLearningResources(input: {
+  topic: string;
+  experienceLevel?: string;
+  goal?: string;
+}) {
+  const base = `${input.topic} ${input.experienceLevel ?? ''} ${input.goal ?? ''}`.trim();
+  const searches: Array<{ kind: ResourceKind; query: string }> = [
+    { kind: 'officialDocs', query: `${base} official documentation latest 2026` },
+    { kind: 'youtube', query: `${base} YouTube tutorial crash course project 2025 2026` },
+    { kind: 'github', query: `${base} GitHub repository project examples 2025 2026` },
+    { kind: 'article', query: `${base} best practices tutorial guide 2025 2026` },
+    { kind: 'course', query: `${base} course curriculum roadmap 2025 2026` },
+    { kind: 'community', query: `${base} roadmap community recommendations 2025 2026` },
+  ];
+
+  const resultSets = await Promise.all(
+    searches.map(async (search) => {
+      const results = await searchDuckDuckGo(search.query);
+      return results.map((result) => ({
+        ...result,
+        kind: inferKind(result.url, search.kind),
+        freshnessRelevance: inferFreshness(result.title, result.url),
+      }));
+    }),
+  );
+
+  const deduped = dedupeResources(resultSets.flat()).slice(0, 32);
+  const enriched = await Promise.all(
+    deduped.map(async (resource) => {
+      if (resource.kind !== 'github') {
+        return resource;
+      }
+
+      return {
+        ...resource,
+        stars: await getGithubStars(resource.url),
+      };
+    }),
+  );
+
+  return enriched.sort((a, b) => scoreResource(b) - scoreResource(a));
+}
+
+function inferKind(url: string, fallback: ResourceKind): ResourceKind {
+  const normalized = url.toLowerCase();
+
+  if (normalized.includes('youtube.com') || normalized.includes('youtu.be')) return 'youtube';
+  if (normalized.includes('github.com')) return 'github';
+  if (normalized.includes('/docs') || normalized.includes('docs.') || normalized.includes('developer.')) return 'officialDocs';
+
+  return fallback;
+}
+
+async function searchDuckDuckGo(query: string): Promise<Omit<ResearchResource, 'kind' | 'freshnessRelevance'>[]> {
+  const url = new URL('https://duckduckgo.com/html/');
+  url.searchParams.set('q', query);
+
+  const response = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (compatible; RoadlynLearningResearch/0.1)',
+    },
+  });
+
+  if (!response.ok) {
+    return [];
+  }
+
+  const html = await response.text();
+  const matches = [...html.matchAll(/<a rel="nofollow" class="result__a" href="([^"]+)">([\s\S]*?)<\/a>/g)];
+
+  return matches.slice(0, SEARCH_LIMIT).map((match) => {
+    const resultUrl = decodeDuckDuckGoUrl(decodeHtml(match[1]));
+    const title = decodeHtml(stripTags(match[2])).trim();
+
+    return {
+      title,
+      url: resultUrl,
+      source: getSourceName(resultUrl),
+      summary: undefined,
+      stars: null,
+      duration: null,
+      channelName: resultUrl.includes('youtube.com') || resultUrl.includes('youtu.be')
+        ? getSourceName(resultUrl)
+        : null,
+    };
+  }).filter((result) => result.title && result.url.startsWith('http'));
+}
+
+function decodeDuckDuckGoUrl(rawUrl: string) {
+  const normalized = rawUrl.startsWith('//') ? `https:${rawUrl}` : rawUrl;
+
+  try {
+    const parsed = new URL(normalized);
+    const target = parsed.searchParams.get('uddg');
+    return target ? decodeURIComponent(target) : normalized;
+  } catch {
+    return normalized;
+  }
+}
+
+async function getGithubStars(url: string) {
+  const match = url.match(/github\.com\/([^/\s]+)\/([^/#?\s]+)/i);
+
+  if (!match) {
+    return null;
+  }
+
+  const [, owner, repo] = match;
+  const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'RoadlynLearningResearchBot/0.1',
+    },
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const data = await response.json() as { stargazers_count?: number };
+  return data.stargazers_count ?? null;
+}
+
+function dedupeResources(resources: ResearchResource[]) {
+  const seen = new Set<string>();
+
+  return resources.filter((resource) => {
+    const key = normalizeUrl(resource.url);
+
+    if (seen.has(key) || isLowQuality(resource)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+}
+
+function normalizeUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    parsed.hash = '';
+    parsed.search = '';
+    return parsed.toString().replace(/\/$/, '');
+  } catch {
+    return url;
+  }
+}
+
+function isLowQuality(resource: ResearchResource) {
+  const text = `${resource.title} ${resource.url}`.toLowerCase();
+  return ['coupon', 'answers', 'cheat', 'torrent', 'download free course'].some((term) => text.includes(term));
+}
+
+function scoreResource(resource: ResearchResource) {
+  const url = resource.url.toLowerCase();
+  let score = 0;
+
+  if (resource.kind === 'officialDocs') score += 35;
+  if (resource.kind === 'youtube') score += 28;
+  if (resource.kind === 'github') score += 24;
+  if (resource.kind === 'course') score += 18;
+  if (url.includes('docs.') || url.includes('/docs') || url.includes('developer.')) score += 18;
+  if (url.includes('github.com')) score += 12;
+  if (url.includes('youtube.com') || url.includes('youtu.be')) score += 12;
+  if (resource.title.match(/2025|2026|latest|updated/i)) score += 10;
+  if (resource.stars) score += Math.min(20, Math.log10(resource.stars + 1) * 5);
+
+  return score;
+}
+
+function inferFreshness(title: string, url: string) {
+  const text = `${title} ${url}`;
+
+  if (/2026/i.test(text)) return 'Explicitly references 2026 or current roadmap material.';
+  if (/2025/i.test(text)) return 'Explicitly references 2025 and is likely current.';
+  if (/latest|updated|modern|current/i.test(text)) return 'Signals current or actively updated guidance.';
+  if (/docs|documentation|github\.com/i.test(text)) return 'Source is usually maintained as tooling evolves.';
+  return 'No publication date found in search result; verify before relying on details.';
+}
+
+function getSourceName(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return 'web';
+  }
+}
+
+function stripTags(value: string) {
+  return value.replace(/<[^>]*>/g, ' ');
+}
+
+function decodeHtml(value: string) {
+  return value
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ');
+}

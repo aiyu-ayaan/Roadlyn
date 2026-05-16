@@ -132,6 +132,101 @@ export interface RoadmapGenerateResult {
   providerId: string;
   modelId: string;
   usage?: unknown;
+  roadmap?: GeneratedCourse | null;
+  researchedResources?: CourseResource[];
+}
+
+export interface CourseResource {
+  kind: 'officialDocs' | 'youtube' | 'github' | 'article' | 'course' | 'community';
+  title: string;
+  url: string;
+  source: string;
+  summary?: string;
+  freshnessRelevance: string;
+  stars?: number | null;
+  duration?: string | null;
+  channelName?: string | null;
+}
+
+export interface GeneratedCourse {
+  title: string;
+  overview: string;
+  estimatedDuration: string;
+  skillLevel: string;
+  skillOutcomes?: string[];
+  phases: CoursePhase[];
+  projects: CourseProject[];
+  resources: CourseResource[];
+  interviewPrep: InterviewPrep[];
+  certifications?: Array<{
+    title: string;
+    provider: string;
+    url?: string | null;
+    relevance: string;
+  }>;
+  recommendedTools?: string[];
+  milestones: Array<{
+    week: string;
+    outcome: string;
+    checkpoint: string;
+  }>;
+}
+
+export interface CoursePhase {
+  title: string;
+  description: string;
+  estimatedDuration: string;
+  prerequisites: string[];
+  learningObjectives: string[];
+  tutorials: Array<{
+    title: string;
+    source: string;
+    url: string;
+    summary: string;
+    freshnessRelevance: string;
+  }>;
+  youtubeVideos: Array<{
+    title: string;
+    channelName?: string | null;
+    duration?: string | null;
+    url: string;
+    whyRecommended: string;
+  }>;
+  officialDocs: Array<{
+    title: string;
+    source: string;
+    url: string;
+    summary: string;
+  }>;
+  githubRepos: Array<{
+    repositoryName: string;
+    url: string;
+    stars?: number | null;
+    whyUseful: string;
+    projectRelevance: string;
+  }>;
+  exercises: string[];
+  miniProjects: string[];
+  quizzes?: Array<{
+    question: string;
+    answer: string;
+  }>;
+  difficultyLevel: 'beginner' | 'intermediate' | 'advanced' | string;
+}
+
+export interface CourseProject {
+  title: string;
+  level: 'beginner' | 'intermediate' | 'advanced' | string;
+  description: string;
+  deliverables: string[];
+  realWorldScenario: string;
+}
+
+export interface InterviewPrep {
+  topic: string;
+  concepts: string[];
+  practicalQuestions: string[];
+  portfolioSuggestion: string;
 }
 
 export interface RealtimeEvent {

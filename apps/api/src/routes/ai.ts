@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAdmin, requireScope } from '../middleware/auth';
 import { AIGatewayService } from '../services/ai-gateway-service';
+import { researchLearningResources } from '../services/web-research-service';
 import { encryptSecret } from '../utils/crypto';
 import { ApiError } from '../utils/errors';
 
@@ -66,6 +67,9 @@ const testProviderSchema = z.object({
 
 const generateSchema = z.object({
   topic: z.string().min(1),
+  experienceLevel: z.string().optional(),
+  goal: z.string().optional(),
+  weeklyHours: z.number().int().positive().max(80).optional(),
   providerId: z.string().optional(),
   modelId: z.string().optional(),
   useUserDefaults: z.boolean().default(false),
@@ -398,17 +402,127 @@ export async function aiRoutes(fastify: FastifyInstance) {
     },
   }, async (request) => {
     const input = generateSchema.parse(request.body);
+    const researchedResources = await researchLearningResources({
+      topic: input.topic,
+      experienceLevel: input.experienceLevel,
+      goal: input.goal,
+    });
     const result = await gateway.generateText({
       userId: request.auth?.userId,
       providerId: input.providerId,
       modelId: input.modelId,
       useUserDefaults: input.useUserDefaults,
       operation: 'roadmap.generate',
-      system:
-        'You generate concise, structured learning roadmaps. Return JSON with title, milestones, and resources.',
-      prompt: `Create a practical roadmap for: ${input.topic}`,
+      system: buildCourseSystemPrompt(),
+      prompt: buildCoursePrompt(input, researchedResources),
     });
 
-    return { success: true, data: result };
+    return {
+      success: true,
+      data: {
+        ...result,
+        roadmap: extractJson(result.text),
+        researchedResources,
+      },
+    };
   });
+}
+
+function buildCourseSystemPrompt() {
+  return [
+    'You are Roadlyn, an advanced AI learning architect and autonomous curriculum generation agent.',
+    'Generate modern Udemy-style courses and roadmap.sh-style progressions from live web research supplied by the backend.',
+    'Use ONLY the supplied live research resources for external links. Do not invent URLs, titles, channel names, stars, durations, or certifications.',
+    'If a resource field such as duration or stars is missing, return null for that field.',
+    'Prioritize official documentation, current YouTube tutorials, maintained GitHub repositories, real projects, community guides, and high-quality articles.',
+    'Avoid outdated, deprecated, low-quality, duplicate, or spammy resources.',
+    'Return only strict JSON. Do not use Markdown fences or commentary.',
+  ].join('\n');
+}
+
+function buildCoursePrompt(
+  input: z.infer<typeof generateSchema>,
+  researchedResources: Awaited<ReturnType<typeof researchLearningResources>>,
+) {
+  return JSON.stringify({
+    task: 'Create a complete modern learning roadmap/course.',
+    input: {
+      topic: input.topic,
+      experienceLevel: input.experienceLevel ?? 'beginner',
+      goal: input.goal ?? 'Become practical and job-ready',
+      weeklyHours: input.weeklyHours ?? 8,
+    },
+    liveResearchResources: researchedResources,
+    requiredOutputShape: {
+      title: 'string',
+      overview: 'string',
+      estimatedDuration: 'string',
+      skillLevel: 'string',
+      skillOutcomes: ['string'],
+      phases: [
+        {
+          title: 'string',
+          description: 'string',
+          estimatedDuration: 'string',
+          prerequisites: ['string'],
+          learningObjectives: ['string'],
+          tutorials: [{ title: 'string', source: 'string', url: 'string', summary: 'string', freshnessRelevance: 'string' }],
+          youtubeVideos: [{ title: 'string', channelName: 'string|null', duration: 'string|null', url: 'string', whyRecommended: 'string' }],
+          officialDocs: [{ title: 'string', source: 'string', url: 'string', summary: 'string' }],
+          githubRepos: [{ repositoryName: 'string', url: 'string', stars: 'number|null', whyUseful: 'string', projectRelevance: 'string' }],
+          exercises: ['string'],
+          miniProjects: ['string'],
+          quizzes: [{ question: 'string', answer: 'string' }],
+          difficultyLevel: 'beginner|intermediate|advanced',
+        },
+      ],
+      projects: [
+        {
+          title: 'string',
+          level: 'beginner|intermediate|advanced',
+          description: 'string',
+          deliverables: ['string'],
+          realWorldScenario: 'string',
+        },
+      ],
+      resources: ['Use grouped live resources from the supplied search results only'],
+      interviewPrep: [
+        {
+          topic: 'string',
+          concepts: ['string'],
+          practicalQuestions: ['string'],
+          portfolioSuggestion: 'string',
+        },
+      ],
+      certifications: [{ title: 'string', provider: 'string', url: 'string|null', relevance: 'string' }],
+      recommendedTools: ['string'],
+      milestones: [{ week: 'string', outcome: 'string', checkpoint: 'string' }],
+    },
+    qualityRules: [
+      'Make the course feel like Udemy plus roadmap.sh plus a personalized mentor.',
+      'Start from fundamentals and progressively increase difficulty.',
+      'Balance theory, practical exercises, projects, revision checkpoints, and interview prep.',
+      'Include beginner, intermediate, and advanced capstone projects.',
+      'Use the newest tooling and best practices visible in the live research.',
+      'Return clean structured JSON only.',
+    ],
+  });
+}
+
+function extractJson(text: string) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/);
+
+    if (!match) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(match[0]);
+    } catch {
+      return null;
+    }
+  }
 }
