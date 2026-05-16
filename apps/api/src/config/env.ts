@@ -1,4 +1,18 @@
+import path from 'path';
+import dotenv from 'dotenv';
 import { z } from 'zod';
+
+const rootDir = path.resolve(__dirname, '../../../..');
+const apiDir = path.resolve(__dirname, '../..');
+
+for (const envFile of [
+  path.join(rootDir, '.env'),
+  path.join(rootDir, '.env.local'),
+  path.join(apiDir, '.env'),
+  path.join(apiDir, '.env.local'),
+]) {
+  dotenv.config({ path: envFile, override: false });
+}
 
 const envSchema = z.object({
   API_PORT: z.coerce.number().default(3001),

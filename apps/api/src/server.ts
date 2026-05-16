@@ -1,9 +1,9 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import helmet from '@fastify/helmet';
 import jwt from '@fastify/jwt';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
-import helmet from 'fastify-helmet';
 import { config } from './config/env';
 import { logger } from './config/logger';
 import { getDb, closeDb } from './config/db';
