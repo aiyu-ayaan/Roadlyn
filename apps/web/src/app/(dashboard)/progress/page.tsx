@@ -1,14 +1,16 @@
 'use client';
 
-import { Award, CalendarDays, Flame, LineChart, Target, Trophy } from 'lucide-react';
+import Link from 'next/link';
+import { Flame, LineChart, Plus, Target, Trophy } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
-import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
-
-const weeks = [48, 62, 58, 74, 81, 76, 88, 93];
+import { useRoadmaps } from '@/hooks/use-roadmaps';
 
 export default function ProgressPage() {
+  const roadmaps = useRoadmaps();
+  const roadmapCount = roadmaps.data?.length ?? 0;
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -18,10 +20,10 @@ export default function ProgressPage() {
 
       <div className="grid gap-4 md:grid-cols-4">
         {[
-          { label: 'Learning streak', value: '12 days', icon: Flame },
-          { label: 'Completed modules', value: '34', icon: Trophy },
-          { label: 'Active goals', value: '5', icon: Target },
-          { label: 'Skill velocity', value: '+18%', icon: LineChart },
+          { label: 'Learning streak', value: '0 days', icon: Flame },
+          { label: 'Completed modules', value: '0', icon: Trophy },
+          { label: 'Active roadmaps', value: String(roadmapCount), icon: Target },
+          { label: 'Skill velocity', value: '0%', icon: LineChart },
         ].map((item) => {
           const Icon = item.icon;
           return (
@@ -34,47 +36,20 @@ export default function ProgressPage() {
         })}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <Card className="p-5">
-          <div className="mb-5 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Weekly learning activity</h2>
-            <Badge variant="success">On pace</Badge>
-          </div>
-          <div className="flex h-72 items-end gap-3">
-            {weeks.map((value, index) => (
-              <div key={index} className="flex flex-1 flex-col items-center gap-2">
-                <div
-                  className="w-full rounded-t-2xl bg-gradient-to-t from-blue-500 to-violet-400 shadow-lg shadow-blue-500/20"
-                  style={{ height: `${value}%` }}
-                />
-                <span className="text-xs text-muted-foreground">W{index + 1}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        <Card className="p-5">
-          <h2 className="text-lg font-semibold">Milestones</h2>
-          <div className="mt-4 space-y-4">
-            {[
-              { title: 'RAG prototype shipped', progress: 100, icon: Award },
-              { title: 'Agent eval suite', progress: 62, icon: CalendarDays },
-              { title: 'Portfolio case study', progress: 24, icon: Target },
-            ].map((item) => {
-              const Icon = item.icon;
-              return (
-                <div key={item.title} className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="flex items-center gap-3">
-                    <Icon className="size-5 text-violet-300" />
-                    <p className="font-medium">{item.title}</p>
-                  </div>
-                  <Progress className="mt-3" value={item.progress} />
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      </div>
+      <Card className="flex min-h-[20rem] flex-col items-center justify-center p-8 text-center">
+        <Target className="size-8 text-blue-300" />
+        <h2 className="mt-4 text-2xl font-semibold">No learning activity yet</h2>
+        <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+          Your milestones, module completion, and activity history will appear after you generate and start using your own
+          roadmap.
+        </p>
+        <Button className="mt-5" asChild>
+          <Link href="/roadmaps/generate">
+            <Plus />
+            Generate roadmap
+          </Link>
+        </Button>
+      </Card>
     </div>
   );
 }

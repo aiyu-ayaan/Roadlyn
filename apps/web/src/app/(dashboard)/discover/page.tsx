@@ -1,18 +1,11 @@
 'use client';
 
-import { BookOpen, Code2, Compass, Github, Star, Video } from 'lucide-react';
+import Link from 'next/link';
+import { Compass, Search } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
-import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Progress } from '@/components/ui/progress';
-
-const paths = [
-  { title: 'AI Engineering', signal: 96, sources: '824 sources', icon: Code2 },
-  { title: 'System Design', signal: 89, sources: '502 sources', icon: BookOpen },
-  { title: 'Cloud DevOps', signal: 84, sources: '438 sources', icon: Github },
-  { title: 'Data Products', signal: 78, sources: '391 sources', icon: Video },
-];
 
 export default function DiscoverPage() {
   return (
@@ -29,33 +22,17 @@ export default function DiscoverPage() {
         </div>
       </Card>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {paths.map((path) => {
-          const Icon = path.icon;
-          return (
-            <Card key={path.title} className="p-5 transition hover:-translate-y-0.5 hover:border-blue-400/30">
-              <div className="flex items-start justify-between">
-                <div>
-                  <Icon className="size-6 text-blue-300" />
-                  <h2 className="mt-4 text-xl font-semibold">{path.title}</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">{path.sources} indexed by Roadlyn</p>
-                </div>
-                <Badge variant="outline" className="border-violet-400/20 bg-violet-500/10 text-violet-200">
-                  <Star className="mr-1 size-3" />
-                  Trending
-                </Badge>
-              </div>
-              <div className="mt-5">
-                <div className="mb-2 flex justify-between text-sm">
-                  <span className="text-muted-foreground">Signal score</span>
-                  <span>{path.signal}</span>
-                </div>
-                <Progress value={path.signal} />
-              </div>
-            </Card>
-          );
-        })}
-      </div>
+      <Card className="flex min-h-[18rem] flex-col items-center justify-center p-8 text-center">
+        <Search className="size-8 text-blue-300" />
+        <h2 className="mt-4 text-2xl font-semibold">Discover is ready for live research</h2>
+        <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+          Use the generator to create a course from current web results. Saved discovery collections will appear here after
+          you create or save research-backed roadmaps.
+        </p>
+        <Button className="mt-5" asChild>
+          <Link href="/roadmaps/generate">Generate a course</Link>
+        </Button>
+      </Card>
     </div>
   );
 }

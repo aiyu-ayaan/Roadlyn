@@ -3,20 +3,12 @@
 import Link from 'next/link';
 import {
   ArrowRight,
-  BookOpen,
   Brain,
   Code2,
-  Flame,
-  Github,
-  Globe2,
-  GraduationCap,
   Layers3,
-  Play,
   Search,
   Sparkles,
-  Target,
   TrendingUp,
-  Video,
   Zap,
 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
@@ -24,33 +16,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useProviderKeys, useProviders } from '@/hooks/use-ai';
 import { useRoadmaps } from '@/hooks/use-roadmaps';
 import { useRealtime } from '@/hooks/use-realtime';
 import { useRealtimeStore } from '@/stores/realtime';
-
-const prompts = [
-  'Become an AI engineer in 12 weeks',
-  'Learn DevOps with real projects',
-  'Master system design for interviews',
-  'Build a cybersecurity lab',
-];
-
-const trendingPaths = [
-  { title: 'AI Engineering', duration: '12 weeks', level: 'Advanced', learners: '18.4k', progress: 72 },
-  { title: 'Full Stack Development', duration: '16 weeks', level: 'Intermediate', learners: '42.1k', progress: 64 },
-  { title: 'DevOps', duration: '10 weeks', level: 'Intermediate', learners: '15.8k', progress: 58 },
-  { title: 'Cybersecurity', duration: '14 weeks', level: 'Beginner', learners: '23.6k', progress: 49 },
-  { title: 'Data Science', duration: '18 weeks', level: 'Intermediate', learners: '31.2k', progress: 69 },
-];
-
-const recentRoadmaps = [
-  { title: 'Production AI Agents', progress: 68, next: 'Tool calling patterns' },
-  { title: 'Cloud Native DevOps', progress: 42, next: 'Kubernetes operators' },
-  { title: 'Modern React Systems', progress: 81, next: 'Server component caching' },
-];
 
 export default function DashboardPage() {
   useRealtime();
@@ -99,14 +69,15 @@ export default function DashboardPage() {
               </Button>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
-              {prompts.map((prompt) => (
-                <button
-                  key={prompt}
-                  className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs text-muted-foreground transition hover:border-blue-400/30 hover:text-foreground"
-                >
-                  {prompt}
-                </button>
-              ))}
+              <Badge variant="outline" className="border-white/10">
+                Uses live web search
+              </Badge>
+              <Badge variant="outline" className="border-white/10">
+                Current docs, videos, repos, and articles
+              </Badge>
+              <Badge variant="outline" className="border-white/10">
+                Powered by your default provider
+              </Badge>
             </div>
           </div>
 
@@ -183,124 +154,45 @@ export default function DashboardPage() {
         <Card className="p-5">
           <div className="mb-5 flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-semibold">Trending learning paths</h3>
-              <p className="text-sm text-muted-foreground">Curated from tutorials, docs, repos, videos, and learner activity.</p>
+              <h3 className="text-lg font-semibold">Your generated courses</h3>
+              <p className="text-sm text-muted-foreground">Create a roadmap to populate this workspace with your own modules and resources.</p>
             </div>
             <Button variant="outline" asChild>
-              <Link href="/discover">Explore</Link>
+              <Link href="/roadmaps/generate">Create</Link>
             </Button>
           </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            {trendingPaths.map((path) => (
-              <div key={path.title} className="rounded-2xl border border-white/10 bg-black/20 p-4 transition hover:border-blue-400/30 hover:bg-white/[0.06]">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h4 className="font-semibold">{path.title}</h4>
-                    <p className="mt-1 text-xs text-muted-foreground">{path.duration} · {path.level} · {path.learners} learners</p>
-                  </div>
-                  <GraduationCap className="size-5 text-violet-300" />
-                </div>
-                <Progress className="mt-4" value={path.progress} />
-              </div>
-            ))}
+          <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-6 text-sm text-muted-foreground">
+            {roadmaps.isLoading
+              ? 'Loading your roadmaps...'
+              : roadmaps.data?.length
+                ? `${roadmaps.data.length} roadmap${roadmaps.data.length === 1 ? '' : 's'} ready.`
+                : 'No roadmaps yet. Generate your first live-researched course to get started.'}
           </div>
         </Card>
 
         <Card className="p-5">
           <div className="mb-5 flex items-center justify-between">
-            <h3 className="text-lg font-semibold">AI insights</h3>
-            <Badge variant="success">Adaptive</Badge>
+            <h3 className="text-lg font-semibold">AI setup</h3>
+            <Badge variant={enabledProviders > 0 ? 'success' : 'outline'}>
+              {enabledProviders > 0 ? 'Ready' : 'Needs provider'}
+            </Badge>
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { label: 'Streak', value: '12d', icon: Flame },
-              { label: 'Modules', value: '34', icon: BookOpen },
-              { label: 'Focus', value: 'AI', icon: Target },
-            ].map((metric) => {
-              const Icon = metric.icon;
-              return (
-                <div key={metric.label} className="rounded-2xl bg-white/[0.055] p-3">
-                  <Icon className="size-4 text-blue-300" />
-                  <p className="mt-3 text-xl font-semibold">{metric.value}</p>
-                  <p className="text-xs text-muted-foreground">{metric.label}</p>
-                </div>
-              );
-            })}
-          </div>
-          <div className="mt-4 space-y-3 text-sm">
-            {[
-              'Add vector databases before agent orchestration.',
-              'Your GitHub repo picks suggest building a retrieval app next.',
-              'Watch one deployment video before the next project milestone.',
-            ].map((insight) => (
-              <div key={insight} className="flex gap-3 rounded-2xl border border-white/10 bg-black/20 p-3">
-                <Sparkles className="mt-0.5 size-4 shrink-0 text-violet-300" />
-                <p className="text-muted-foreground">{insight}</p>
-              </div>
-            ))}
+          <div className="space-y-3 text-sm">
+            <div className="flex gap-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+              <Sparkles className="mt-0.5 size-4 shrink-0 text-violet-300" />
+              <p className="text-muted-foreground">
+                Roadlyn will use the platform default provider unless you choose a provider and model while generating.
+              </p>
+            </div>
+            <div className="flex gap-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+              <Search className="mt-0.5 size-4 shrink-0 text-blue-300" />
+              <p className="text-muted-foreground">
+                Every course generation searches the live web before creating modules, projects, resources, and interview prep.
+              </p>
+            </div>
           </div>
         </Card>
       </section>
-
-      <section className="grid gap-6 xl:grid-cols-[1fr_0.9fr]">
-        <Card className="p-5">
-          <h3 className="text-lg font-semibold">Continue learning</h3>
-          <div className="mt-4 space-y-3">
-            {recentRoadmaps.map((roadmap) => (
-              <div key={roadmap.title} className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-black/20 p-4 md:flex-row md:items-center md:justify-between">
-                <div className="min-w-0 flex-1">
-                  <h4 className="font-medium">{roadmap.title}</h4>
-                  <p className="mt-1 text-xs text-muted-foreground">Next: {roadmap.next}</p>
-                  <Progress className="mt-3" value={roadmap.progress} />
-                </div>
-                <Button variant="outline">
-                  <Play />
-                  Resume
-                </Button>
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        <Card className="p-5">
-          <h3 className="text-lg font-semibold">Resource intelligence</h3>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {[
-              { label: 'Docs indexed', value: '2,418', icon: Globe2 },
-              { label: 'GitHub repos', value: '846', icon: Github },
-              { label: 'Videos mapped', value: '1,204', icon: Video },
-              { label: 'Exercises', value: '392', icon: Code2 },
-            ].map((item) => {
-              const Icon = item.icon;
-              return (
-                <div key={item.label} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                  <Icon className="size-5 text-blue-300" />
-                  <p className="mt-3 text-2xl font-semibold">{item.value}</p>
-                  <p className="text-xs text-muted-foreground">{item.label}</p>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      </section>
-
-      <aside className="fixed bottom-24 right-5 z-40 hidden w-80 rounded-3xl border border-white/10 bg-black/65 p-4 shadow-2xl shadow-black/40 backdrop-blur-2xl 2xl:block">
-        <div className="flex items-center gap-3">
-          <span className="ai-glow flex size-9 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-violet-500">
-            <Sparkles className="size-4" />
-          </span>
-          <div>
-            <p className="font-medium">Roadlyn Copilot</p>
-            <p className="text-xs text-muted-foreground">Thinking with your graph</p>
-          </div>
-        </div>
-        <p className="mt-4 text-sm leading-6 text-muted-foreground">
-          I found a stronger sequence for AI Engineering: TypeScript agents, evals, then deployment.
-        </p>
-        <Button className="mt-4 w-full" variant="outline" asChild>
-          <Link href="/workspace">Open workspace</Link>
-        </Button>
-      </aside>
     </div>
   );
 }
