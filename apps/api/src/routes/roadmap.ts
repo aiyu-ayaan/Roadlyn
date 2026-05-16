@@ -169,16 +169,19 @@ async function runRoadmapGenerationJob(input: {
       progress: 45,
     });
 
-    const result = await gateway.generateText({
+    let aiError: unknown;
+    const result = await generateCourseWithRetries({
+      gateway,
       userId,
-      providerId: input.input.providerId,
-      modelId: input.input.modelId,
-      useUserDefaults: input.input.useUserDefaults,
-      operation: 'roadmap.generate',
-      system: buildCourseSystemPrompt(),
-      prompt: buildCoursePrompt(input.input, researchedResources),
+      input: input.input,
+      researchedResources,
+    }).catch((error: unknown) => {
+      aiError = error;
+      return null;
     });
-    const course = extractJson(result.text) ?? buildFallbackCourse(input.input, researchedResources);
+    const course = result
+      ? extractJson(result.text) ?? buildFallbackCourse(input.input, researchedResources)
+      : buildFallbackCourse(input.input, researchedResources);
 
     await updateRoadmapJob(fastify, roadmapId, {
       title: course.title,
@@ -186,8 +189,11 @@ async function runRoadmapGenerationJob(input: {
       progress: 100,
       generatedCourse: course,
       researchedResources,
-      providerId: result.providerId,
-      modelId: result.modelId,
+      providerId: result?.providerId,
+      modelId: result?.modelId,
+      errorMessage: aiError
+        ? `AI provider was temporarily unavailable, so Roadlyn generated this course from scraped research: ${getErrorMessage(aiError)}`
+        : undefined,
       completedAt: new Date(),
     });
   } catch (error) {
@@ -199,6 +205,69 @@ async function runRoadmapGenerationJob(input: {
 
     fastify.log.error(error);
   }
+}
+
+async function generateCourseWithRetries(input: {
+  gateway: AIGatewayService;
+  userId: string;
+  input: GenerateInput;
+  researchedResources: ResearchResource[];
+}) {
+  const maxAttempts = 3;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await input.gateway.generateText({
+        userId: input.userId,
+        providerId: input.input.providerId,
+        modelId: input.input.modelId,
+        useUserDefaults: input.input.useUserDefaults,
+        operation: 'roadmap.generate',
+        system: buildCourseSystemPrompt(),
+        prompt: buildCoursePrompt(input.input, input.researchedResources),
+      });
+    } catch (error) {
+      lastError = error;
+
+      if (!isRetryableAIError(error) || attempt === maxAttempts) {
+        throw error;
+      }
+
+      await delay(1500 * attempt);
+    }
+  }
+
+  throw lastError;
+}
+
+function isRetryableAIError(error: unknown) {
+  const text = getErrorMessage(error).toLowerCase();
+  return (
+    text.includes('429') ||
+    text.includes('rate limit') ||
+    text.includes('rate-limited') ||
+    text.includes('temporarily') ||
+    text.includes('retry')
+  );
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return 'Unknown AI provider error';
+  }
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 async function updateRoadmapJob(

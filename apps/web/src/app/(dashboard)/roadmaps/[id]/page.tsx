@@ -47,6 +47,15 @@ export default function RoadmapDetailPage() {
         <Card className="p-6 text-sm text-muted-foreground">Loading roadmap...</Card>
       ) : !data ? (
         <Card className="p-6 text-sm text-muted-foreground">Roadmap not found.</Card>
+      ) : data.status === 'FAILED' ? (
+        <Card className="p-6">
+          <Badge variant="destructive">failed</Badge>
+          <h2 className="mt-3 text-xl font-semibold">Generation failed</h2>
+          <p className="mt-2 text-sm text-muted-foreground">{data.errorMessage ?? 'Roadmap generation failed.'}</p>
+          <Button className="mt-5" asChild>
+            <Link href="/roadmaps/generate">Generate again</Link>
+          </Button>
+        </Card>
       ) : isWorking || !course ? (
         <GenerationStatus
           title={data.topic ?? data.title}
@@ -54,13 +63,8 @@ export default function RoadmapDetailPage() {
           progress={data.progress}
           resources={data.researchedResources ?? []}
         />
-      ) : data.status === 'FAILED' ? (
-        <Card className="p-6">
-          <h2 className="text-xl font-semibold">Generation failed</h2>
-          <p className="mt-2 text-sm text-muted-foreground">{data.errorMessage ?? 'Roadmap generation failed.'}</p>
-        </Card>
       ) : (
-        <CourseScreen course={course} resources={data.researchedResources ?? course.resources ?? []} />
+        <CourseScreen course={course} resources={data.researchedResources ?? course.resources ?? []} notice={data.errorMessage} />
       )}
     </div>
   );
@@ -121,7 +125,15 @@ function GenerationStatus({
   );
 }
 
-function CourseScreen({ course, resources }: { course: GeneratedCourse; resources: CourseResource[] }) {
+function CourseScreen({
+  course,
+  resources,
+  notice,
+}: {
+  course: GeneratedCourse;
+  resources: CourseResource[];
+  notice?: string | null;
+}) {
   const firstPhase = course.phases?.[0];
 
   return (
@@ -153,6 +165,12 @@ function CourseScreen({ course, resources }: { course: GeneratedCourse; resource
       </Card>
 
       <div className="space-y-6">
+        {notice ? (
+          <Card className="border-amber-400/20 bg-amber-500/10 p-4 text-sm leading-6 text-amber-100">
+            {notice}
+          </Card>
+        ) : null}
+
         <Card className="overflow-hidden">
           <div className="grid min-h-[22rem] place-items-center bg-gradient-to-br from-slate-950 via-blue-950/35 to-violet-950/40 p-8 text-center">
             <div>
