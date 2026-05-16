@@ -26,6 +26,13 @@ const envSchema = z.object({
   JWT_EXPIRATION: z.string().default('7d'),
   AI_KEY_ENCRYPTION_SECRET: z.string().min(32),
   OAUTH_TOKEN_ISSUER: z.string().default('roadlyn-api'),
+  WEB_APP_URL: z.string().url().default('http://localhost:3000'),
+  GITHUB_OAUTH_CLIENT_ID: z.string().optional(),
+  GITHUB_OAUTH_CLIENT_SECRET: z.string().optional(),
+  GITHUB_OAUTH_CALLBACK_URL: z
+    .string()
+    .url()
+    .default('http://localhost:3001/api/auth/github/callback'),
   SENDGRID_API_KEY: z.string().optional(),
   STRIPE_API_KEY: z.string().optional(),
 });
