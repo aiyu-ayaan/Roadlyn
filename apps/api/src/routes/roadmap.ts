@@ -6,7 +6,7 @@
 import { FastifyInstance } from 'fastify';
 
 export async function roadmapRoutes(fastify: FastifyInstance) {
-  fastify.get('/roadmaps', async (request, reply) => {
+  fastify.get('/roadmaps', async () => {
     return {
       success: true,
       message: 'Get roadmaps endpoint placeholder',
@@ -14,28 +14,28 @@ export async function roadmapRoutes(fastify: FastifyInstance) {
     };
   });
 
-  fastify.post('/roadmaps', async (request, reply) => {
+  fastify.post('/roadmaps', async () => {
     return {
       success: true,
       message: 'Create roadmap endpoint placeholder',
     };
   });
 
-  fastify.get('/roadmaps/:id', async (request, reply) => {
+  fastify.get('/roadmaps/:id', async () => {
     return {
       success: true,
       message: 'Get roadmap endpoint placeholder',
     };
   });
 
-  fastify.put('/roadmaps/:id', async (request, reply) => {
+  fastify.put('/roadmaps/:id', async () => {
     return {
       success: true,
       message: 'Update roadmap endpoint placeholder',
     };
   });
 
-  fastify.delete('/roadmaps/:id', async (request, reply) => {
+  fastify.delete('/roadmaps/:id', async () => {
     return {
       success: true,
       message: 'Delete roadmap endpoint placeholder',

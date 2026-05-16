@@ -1,5 +1,8 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import jwt from '@fastify/jwt';
+import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
 import helmet from 'fastify-helmet';
 import { config } from './config/env';
 import { logger } from './config/logger';
@@ -12,7 +15,7 @@ import { aiRoutes } from './routes/ai';
 
 export async function createServer() {
   const fastify = Fastify({
-    logger: logger,
+    logger: logger as never,
   });
 
   // Register plugins
@@ -22,6 +25,46 @@ export async function createServer() {
   });
 
   await fastify.register(helmet);
+
+  await fastify.register(jwt, {
+    secret: config.JWT_SECRET,
+  });
+
+  await fastify.register(swagger, {
+    openapi: {
+      info: {
+        title: 'Roadlyn API',
+        description: 'Dynamic AI provider gateway and roadmap API',
+        version: '0.1.0',
+      },
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT',
+          },
+          oauth2: {
+            type: 'oauth2',
+            flows: {
+              clientCredentials: {
+                tokenUrl: '/api/auth/token',
+                scopes: {
+                  'ai:read': 'Read AI provider configuration',
+                  'ai:write': 'Manage AI providers, models, keys, and generation',
+                  'ai:admin': 'Full AI gateway administration',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  await fastify.register(swaggerUi, {
+    routePrefix: '/docs',
+  });
 
   // Initialize connections
   const db = getDb();
@@ -38,7 +81,7 @@ export async function createServer() {
   await fastify.register(aiRoutes, { prefix: '/api' });
 
   // Error handler
-  fastify.setErrorHandler((error, request, reply) => {
+  fastify.setErrorHandler((error, _request, reply) => {
     logger.error(error);
     reply.status(error.statusCode || 500).send({
       success: false,
