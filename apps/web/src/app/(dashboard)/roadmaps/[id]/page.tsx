@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Circle,
   Code2,
+  ExternalLink,
   FileText,
   Github,
   GraduationCap,
@@ -27,7 +28,6 @@ import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useDeleteRoadmap, useRoadmap } from '@/hooks/use-roadmaps';
-import { roadmapService } from '@/services/roadmap/roadmap-service';
 import { CoursePhase, CourseProject, CourseResource, GeneratedCourse, InterviewPrep } from '@/types';
 
 type CourseItem =
@@ -478,74 +478,64 @@ function LessonContent({
 }
 
 function ResourcePreview({ resource }: { resource: CourseResource }) {
-  const [html, setHtml] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const sourceUrl = normalizeExternalUrl(resource.url);
 
   useEffect(() => {
-    let mounted = true;
     setIsLoading(true);
-    setHtml(null);
-
-    roadmapService.previewResource(resource.url)
-      .then((preview) => {
-        if (mounted) {
-          setHtml(preview.html);
-        }
-      })
-      .catch(() => {
-        if (mounted) {
-          setHtml(buildClientPreviewFallback(resource));
-        }
-      })
-      .finally(() => {
-        if (mounted) {
-          setIsLoading(false);
-        }
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [resource]);
+  }, [sourceUrl]);
 
   return (
-    <div className="border-b border-white/10 bg-white">
-      {isLoading ? (
-        <div className="grid min-h-[560px] place-items-center bg-card text-sm text-muted-foreground">
-          Loading source inside Roadlyn...
+    <div className="border-b border-white/10 bg-background">
+      <div className="flex flex-col gap-3 border-b border-white/10 bg-card/95 px-5 py-4 md:flex-row md:items-center md:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">{resource.source}</p>
+          <h2 className="truncate text-base font-semibold">{resource.title}</h2>
+        </div>
+        {sourceUrl ? (
+          <Button asChild variant="outline" size="sm">
+            <a href={sourceUrl} target="_blank" rel="noreferrer">
+              <ExternalLink className="size-4" />
+              Open full page
+            </a>
+          </Button>
+        ) : null}
+      </div>
+      {sourceUrl ? (
+        <div className="relative h-[72vh] min-h-[560px] bg-white">
+          {isLoading ? (
+            <div className="absolute inset-0 z-10 grid place-items-center bg-card text-sm text-muted-foreground">
+              Loading full source page...
+            </div>
+          ) : null}
+          <iframe
+            title={resource.title}
+            src={sourceUrl}
+            onLoad={() => setIsLoading(false)}
+            referrerPolicy="strict-origin-when-cross-origin"
+            className="h-full w-full bg-white"
+          />
         </div>
       ) : (
-        <iframe
-          title={resource.title}
-          srcDoc={html ?? buildClientPreviewFallback(resource)}
-          sandbox="allow-same-origin allow-popups allow-forms"
-          className="h-[70vh] min-h-[560px] w-full bg-white"
-        />
+        <ResourcePreviewFallback resource={resource} />
       )}
     </div>
   );
 }
 
-function buildClientPreviewFallback(resource: CourseResource) {
-  return [
-    '<!doctype html><html><head><style>',
-    'body{font-family:system-ui,sans-serif;background:#0b0f17;color:#d8dee9;margin:0;display:grid;min-height:100vh;place-items:center}',
-    'main{max-width:760px;padding:40px;line-height:1.7} .source{color:#93c5fd;font-size:14px} .url{color:#94a3b8;word-break:break-all;font-size:13px}',
-    '</style></head><body><main>',
-    `<p class="source">${escapeClientHtml(resource.source)}</p>`,
-    `<h1>${escapeClientHtml(resource.title)}</h1>`,
-    `<p>${escapeClientHtml(resource.summary ?? resource.freshnessRelevance)}</p>`,
-    `<p class="url">${escapeClientHtml(resource.url)}</p>`,
-    '</main></body></html>',
-  ].join('');
-}
-
-function escapeClientHtml(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+function ResourcePreviewFallback({ resource }: { resource: CourseResource }) {
+  return (
+    <div className="grid min-h-[560px] place-items-center bg-card px-6 py-12">
+      <div className="max-w-2xl rounded-lg border border-white/10 bg-white/[0.035] p-6">
+        <p className="text-sm text-muted-foreground">{resource.source}</p>
+        <h2 className="mt-2 text-2xl font-semibold">{resource.title}</h2>
+        <p className="mt-4 text-sm leading-7 text-muted-foreground">
+          {resource.summary ?? resource.freshnessRelevance}
+        </p>
+        <p className="mt-4 break-all text-xs text-muted-foreground">{resource.url}</p>
+      </div>
+    </div>
+  );
 }
 
 function ResourceStudyNotes({ resource, phase }: { resource: CourseResource; phase?: CoursePhase }) {
