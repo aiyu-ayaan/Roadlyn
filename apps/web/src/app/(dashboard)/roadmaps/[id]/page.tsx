@@ -16,6 +16,7 @@ import {
   GraduationCap,
   LayoutPanelLeft,
   Loader2,
+  Menu,
   Sparkles,
   Target,
   Trash2,
@@ -219,44 +220,15 @@ function CourseScreen({
   };
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[18rem_1fr]">
-      <aside className="h-max overflow-hidden rounded-xl border border-white/10 bg-card/80">
-        <div className="border-b border-white/10 p-4">
-          <Badge variant="outline">{course.skillLevel}</Badge>
-          <h2 className="mt-3 text-lg font-semibold">{course.title}</h2>
-          <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
-            <Clock3 className="size-4" />
-            {course.estimatedDuration}
-          </div>
-          <Progress className="mt-4" value={courseProgress} />
-          <p className="mt-2 text-xs text-muted-foreground">{courseProgress}% complete</p>
-        </div>
-        <div className="max-h-[calc(100vh-18rem)] overflow-y-auto">
-          {(course.phases ?? []).map((phase, index) => {
-            const isComplete = completedSet.has(`${roadmapId}:${index}`);
-            const isActive = activePhaseIndex === index;
-
-            return (
-              <button
-                key={`${phase.title}-${index}`}
-                type="button"
-                onClick={() => setActivePhaseIndex(index)}
-                className={`block w-full border-b border-white/10 p-4 text-left transition hover:bg-white/[0.04] ${isActive ? 'bg-white/[0.06]' : ''}`}
-              >
-                <div className="flex gap-3">
-                  <span className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg text-xs ${isComplete ? 'bg-emerald-500/15 text-emerald-200' : 'bg-white/[0.06]'}`}>
-                    {isComplete ? <CheckCircle2 className="size-4" /> : index + 1}
-                  </span>
-                  <span>
-                    <span className="block text-sm font-medium">{phase.title}</span>
-                    <span className="mt-1 block text-xs text-muted-foreground">{phase.estimatedDuration}</span>
-                  </span>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </aside>
+    <div className="relative">
+      <CourseSidebar
+        course={course}
+        activePhaseIndex={activePhaseIndex}
+        completedSet={completedSet}
+        courseProgress={courseProgress}
+        roadmapId={roadmapId}
+        onSelectPhase={setActivePhaseIndex}
+      />
 
       <main className="space-y-6">
         {notice ? (
@@ -266,8 +238,8 @@ function CourseScreen({
         ) : null}
 
         <section className="overflow-hidden rounded-xl border border-white/10 bg-card">
-          <div className="grid min-h-[36rem] lg:grid-cols-[1fr_23rem]">
-            <div className="flex min-h-[34rem] flex-col">
+          <div className="grid min-h-[calc(100vh-14rem)] lg:grid-cols-[minmax(0,1fr)_24rem]">
+            <div className="flex min-h-[calc(100vh-14rem)] flex-col">
               <CoursePlayer
                 course={course}
                 phase={activePhase}
@@ -295,7 +267,7 @@ function CourseScreen({
                 <p className="text-sm font-medium">Course queue</p>
                 <p className="mt-1 text-xs text-muted-foreground">Videos, sites, GitHub links, notes, tasks, and quizzes open here.</p>
               </div>
-              <div className="max-h-[38rem] overflow-y-auto p-3">
+              <div className="max-h-[calc(100vh-18rem)] overflow-y-auto p-3">
                 {items.map((item, index) => (
                   <button
                     key={`${item.type}-${item.title}-${index}`}
@@ -317,6 +289,67 @@ function CourseScreen({
 
         <CourseOverview course={course} resources={resources} onOpenResource={openResource} />
       </main>
+    </div>
+  );
+}
+
+function CourseSidebar({
+  course,
+  activePhaseIndex,
+  completedSet,
+  courseProgress,
+  roadmapId,
+  onSelectPhase,
+}: {
+  course: GeneratedCourse;
+  activePhaseIndex: number;
+  completedSet: Set<string>;
+  courseProgress: number;
+  roadmapId: string;
+  onSelectPhase: (index: number) => void;
+}) {
+  return (
+    <div className="group fixed left-0 top-28 z-40 hidden h-[calc(100vh-9rem)] w-10 xl:block">
+      <div className="absolute left-0 top-28 flex h-20 w-10 items-center justify-center rounded-r-lg border border-l-0 border-white/10 bg-card/95 text-muted-foreground shadow-xl">
+        <Menu className="size-4" />
+      </div>
+      <aside className="absolute left-0 top-0 h-full w-80 -translate-x-[17.75rem] overflow-hidden rounded-r-xl border border-l-0 border-white/10 bg-card/95 shadow-2xl shadow-black/30 backdrop-blur transition-transform duration-200 group-hover:translate-x-0">
+        <div className="border-b border-white/10 p-4">
+          <Badge variant="outline">{course.skillLevel}</Badge>
+          <h2 className="mt-3 text-lg font-semibold">{course.title}</h2>
+          <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
+            <Clock3 className="size-4" />
+            {course.estimatedDuration}
+          </div>
+          <Progress className="mt-4" value={courseProgress} />
+          <p className="mt-2 text-xs text-muted-foreground">{courseProgress}% complete</p>
+        </div>
+        <div className="h-[calc(100%-9rem)] overflow-y-auto">
+          {(course.phases ?? []).map((phase, index) => {
+            const isComplete = completedSet.has(`${roadmapId}:${index}`);
+            const isActive = activePhaseIndex === index;
+
+            return (
+              <button
+                key={`${phase.title}-${index}`}
+                type="button"
+                onClick={() => onSelectPhase(index)}
+                className={`block w-full border-b border-white/10 p-4 text-left transition hover:bg-white/[0.04] ${isActive ? 'bg-white/[0.06]' : ''}`}
+              >
+                <div className="flex gap-3">
+                  <span className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg text-xs ${isComplete ? 'bg-emerald-500/15 text-emerald-200' : 'bg-white/[0.06]'}`}>
+                    {isComplete ? <CheckCircle2 className="size-4" /> : index + 1}
+                  </span>
+                  <span>
+                    <span className="block text-sm font-medium">{phase.title}</span>
+                    <span className="mt-1 block text-xs text-muted-foreground">{phase.estimatedDuration}</span>
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </aside>
     </div>
   );
 }
@@ -365,11 +398,16 @@ function CoursePlayer({
               src={embedUrl}
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               allowFullScreen
-              className="min-h-[30rem] w-full flex-1 bg-black"
+              className="aspect-video w-full bg-black"
             />
           ) : (
-            <ResourcePreview resource={item.resource} />
+            <ResourcePreview resource={item.resource} phase={phase} />
           )}
+          {embedUrl ? (
+            <div className="border-t border-white/10 p-5">
+              <ResourceStudyNotes resource={item.resource} phase={phase} />
+            </div>
+          ) : null}
         </div>
       ) : (
         <article className="p-6">
@@ -405,25 +443,70 @@ function CoursePlayer({
   );
 }
 
-function ResourcePreview({ resource }: { resource: CourseResource }) {
+function ResourcePreview({ resource, phase }: { resource: CourseResource; phase?: CoursePhase }) {
   return (
-    <div className="grid min-h-[30rem] place-items-center p-8 text-center">
-      <div className="max-w-xl">
-        {resource.kind === 'github' ? <Github className="mx-auto size-12 text-blue-300" /> : <ExternalLink className="mx-auto size-12 text-blue-300" />}
-        <h3 className="mt-4 text-2xl font-semibold">{resource.title}</h3>
-        <p className="mt-3 text-sm leading-6 text-muted-foreground">
-          Roadlyn keeps this resource in your course flow. Some sites, including many GitHub pages, block iframe playback,
-          so this preview preserves the summary, relevance, and original link in one place.
-        </p>
-        <div className="mt-5 rounded-lg border border-white/10 bg-black/20 p-4 text-left text-sm leading-6 text-muted-foreground">
-          {resource.summary ?? resource.freshnessRelevance}
+    <div className="p-6">
+      <div className="mx-auto max-w-5xl">
+        <div className="rounded-xl border border-white/10 bg-black/20 p-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-blue-300">
+                {resource.kind === 'github' ? <Github className="size-5" /> : <ExternalLink className="size-5" />}
+                <span className="text-sm font-medium">{resource.kind === 'github' ? 'Repository lab' : 'Reading lesson'}</span>
+              </div>
+              <h3 className="mt-4 text-3xl font-semibold">{resource.title}</h3>
+              <p className="mt-2 text-sm text-muted-foreground">{resource.source}</p>
+            </div>
+            <Button variant="outline" asChild>
+              <a href={resource.url} target="_blank" rel="noreferrer">
+                <ArrowUpRight />
+                Open original
+              </a>
+            </Button>
+          </div>
+          <p className="mt-5 text-sm leading-7 text-muted-foreground">
+            This site may block embedded loading, so Roadlyn keeps the learning flow inside the course and gives you the
+            original link when you need the source page. Use the notes below as the playable lesson content.
+          </p>
         </div>
-        <Button className="mt-5" asChild>
-          <a href={resource.url} target="_blank" rel="noreferrer">
-            <ArrowUpRight />
-            Open original
-          </a>
-        </Button>
+
+        <ResourceStudyNotes resource={resource} phase={phase} />
+      </div>
+    </div>
+  );
+}
+
+function ResourceStudyNotes({ resource, phase }: { resource: CourseResource; phase?: CoursePhase }) {
+  const objectives = phase?.learningObjectives?.slice(0, 4) ?? [];
+  const tasks = [...(phase?.exercises ?? []), ...(phase?.miniProjects ?? [])].slice(0, 4);
+
+  return (
+    <div className="mt-5 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+      <div className="rounded-xl border border-white/10 bg-white/[0.035] p-5">
+        <h4 className="text-lg font-semibold">What to learn here</h4>
+        <p className="mt-3 text-sm leading-7 text-muted-foreground">
+          {resource.summary ?? resource.freshnessRelevance}
+        </p>
+        <div className="mt-5 space-y-3">
+          {(objectives.length ? objectives : ['Read the resource with the current module goal in mind.', 'Capture the decisions, APIs, commands, and examples you can reuse.']).map((item) => (
+            <p key={item} className="flex gap-2 text-sm leading-6 text-muted-foreground">
+              <CheckCircle2 className="mt-1 size-4 shrink-0 text-emerald-300" />
+              {item}
+            </p>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-white/10 bg-white/[0.035] p-5">
+        <h4 className="text-lg font-semibold">Do next</h4>
+        <div className="mt-3 space-y-3">
+          {(tasks.length ? tasks : ['Write a short summary in your own words.', 'Create a small example that proves you understood the resource.']).map((item) => (
+            <label key={item} className="flex cursor-pointer gap-2 rounded-lg p-2 text-sm leading-6 text-muted-foreground hover:bg-white/[0.04]">
+              <input type="checkbox" className="mt-1" />
+              <span>{item}</span>
+            </label>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -689,11 +772,7 @@ function phaseResources(phase: CoursePhase): CourseResource[] {
 function getEmbedUrl(url: string) {
   const videoId = getYouTubeVideoId(url);
   if (videoId) {
-    return `https://www.youtube.com/embed/${videoId}`;
-  }
-
-  if (/^https?:\/\//i.test(url) && !url.includes('github.com')) {
-    return url;
+    return `https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1`;
   }
 
   return null;
