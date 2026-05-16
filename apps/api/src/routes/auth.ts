@@ -181,19 +181,14 @@ export async function authRoutes(fastify: FastifyInstance) {
       )).find((item) => item.primary && item.verified)?.email ??
       `${githubUser.login}@users.noreply.github.com`;
 
-    const userStore = fastify.db.user as typeof fastify.db.user & {
-      findUnique(args: Record<string, unknown>): ReturnType<typeof fastify.db.user.findUnique>;
-      update(args: Record<string, unknown>): ReturnType<typeof fastify.db.user.update>;
-      create(args: Record<string, unknown>): ReturnType<typeof fastify.db.user.create>;
-    };
-    const existingByGithub = await userStore.findUnique({
+    const existingByGithub = await fastify.db.user.findUnique({
       where: { githubId: String(githubUser.id) },
     });
     const existingByEmail = existingByGithub
       ? null
-      : await userStore.findUnique({ where: { email } });
+      : await fastify.db.user.findUnique({ where: { email } });
     const user = existingByGithub
-      ? await userStore.update({
+      ? await fastify.db.user.update({
           where: { id: existingByGithub.id },
           data: {
             email,
@@ -202,7 +197,7 @@ export async function authRoutes(fastify: FastifyInstance) {
           },
         })
       : existingByEmail
-        ? await userStore.update({
+        ? await fastify.db.user.update({
             where: { id: existingByEmail.id },
             data: {
               githubId: String(githubUser.id),
@@ -210,7 +205,7 @@ export async function authRoutes(fastify: FastifyInstance) {
               avatar: existingByEmail.avatar ?? githubUser.avatar_url,
             },
           })
-        : await userStore.create({
+        : await fastify.db.user.create({
             data: {
               email,
               githubId: String(githubUser.id),
