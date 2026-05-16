@@ -1,0 +1,5 @@
+{
+  "name": "@roadlyn/ts-config",
+  "version": "0.1.0",
+  "description": "Shared TypeScript configuration for Roadlyn"
+}

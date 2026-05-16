@@ -1,0 +1,17 @@
+# Auto normalize line endings for all text files
+* text=auto
+
+# Specific settings for different file types
+*.ts     diff=typescript
+*.tsx    diff=typescript
+*.js     diff=javascript
+*.jsx    diff=javascript
+*.json   diff=json
+*.md     diff=markdown
+
+# Keep shell scripts with LF
+*.sh     eol=lf
+
+# Keep Windows batch files with CRLF
+*.bat    eol=crlf
+*.cmd    eol=crlf

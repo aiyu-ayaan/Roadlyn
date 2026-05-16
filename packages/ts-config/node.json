@@ -1,0 +1,14 @@
+{
+  "extends": "./base.json",
+  "compilerOptions": {
+    "lib": [
+      "ES2020"
+    ],
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "resolveJsonModule": true,
+    "declaration": true
+  }
+}

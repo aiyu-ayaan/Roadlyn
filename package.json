@@ -1,0 +1,40 @@
+{
+  "name": "roadlyn",
+  "version": "0.1.0",
+  "description": "Roadlyn - AI-powered SaaS platform for intelligent roadmap generation",
+  "private": true,
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "dev:web": "turbo run dev --filter=web",
+    "dev:api": "turbo run dev --filter=api",
+    "build": "turbo run build",
+    "build:web": "turbo run build --filter=web",
+    "build:api": "turbo run build --filter=api",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint -- --fix",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "test": "turbo run test",
+    "type-check": "turbo run type-check",
+    "db:migrate": "cd apps/api && pnpm prisma migrate dev",
+    "db:generate": "cd apps/api && pnpm prisma generate",
+    "docker:up": "docker-compose -f docker-compose.yml up -d",
+    "docker:down": "docker-compose -f docker-compose.yml down",
+    "docker:logs": "docker-compose -f docker-compose.yml logs -f",
+    "clean": "turbo clean && find . -type d -name node_modules -exec rm -rf {} + 2>/dev/null || true"
+  },
+  "keywords": [
+    "saas",
+    "ai",
+    "roadmap",
+    "roadlyn"
+  ],
+  "author": "Roadlyn Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "prettier": "^3.2.5",
+    "turbo": "^1.13.3"
+  },
+  "packageManager": "pnpm@9.0.0"
+}

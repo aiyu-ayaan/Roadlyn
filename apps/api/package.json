@@ -1,0 +1,45 @@
+{
+  "name": "api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "lint": "eslint src --max-warnings 0",
+    "lint:fix": "eslint src --fix",
+    "type-check": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.{ts,json,md}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,json,md}\""
+  },
+  "dependencies": {
+    "@roadlyn/types": "workspace:*",
+    "@t3-oss/env-core": "^0.7.1",
+    "axios": "^1.6.5",
+    "bullmq": "^5.3.0",
+    "dotenv": "^16.3.1",
+    "fastify": "^4.25.1",
+    "@fastify/cors": "^8.4.2",
+    "fastify-helmet": "^7.1.0",
+    "@fastify/jwt": "^7.2.4",
+    "@fastify/websocket": "^8.3.1",
+    "langchain": "^0.1.26",
+    "pino": "^8.17.2",
+    "pino-pretty": "^10.3.1",
+    "prisma": "^5.7.1",
+    "redis": "^4.6.12",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@roadlyn/eslint-config": "workspace:*",
+    "@roadlyn/ts-config": "workspace:*",
+    "@types/node": "^20.11.0",
+    "@typescript-eslint/eslint-plugin": "^6.14.0",
+    "@typescript-eslint/parser": "^6.14.0",
+    "eslint": "^8.55.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.2.5",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}

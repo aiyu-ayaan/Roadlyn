@@ -1,0 +1,78 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model
+model User {
+  id        String     @id @default(cuid())
+  email     String     @unique
+  name      String?
+  avatar    String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  sessions  Session[]
+  roadmaps  Roadmap[]
+
+  @@index([email])
+}
+
+// Session model for JWT/Auth
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// AI Provider configuration
+model AIProvider {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  type      String     // 'openai', 'anthropic', etc.
+  isActive  Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  models    AIModel[]
+
+  @@index([type])
+}
+
+// AI Model configuration
+model AIModel {
+  id              String      @id @default(cuid())
+  providerId      String
+  provider        AIProvider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  name            String
+  displayName     String
+  version         String
+  maxTokens       Int
+  costPer1kTokens Float
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([providerId])
+}
+
+// Placeholder for future roadmap model
+model Roadmap {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}

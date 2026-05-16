@@ -1,0 +1,8 @@
+/*
+  Warnings:
+
+  - You are about to drop the `_prisma_migrations` table. If the table is not empty, all the data it contains will be lost.
+
+*/
+-- This is a migration file for the initial schema setup
+-- Run this migration to initialize the database

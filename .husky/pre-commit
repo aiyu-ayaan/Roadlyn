@@ -1,0 +1,7 @@
+#!/bin/sh
+# Husky hook - Pre-commit
+# Runs linting and formatting on staged files
+
+. "$(dirname "$0")/_/husky.sh"
+
+pnpm lint-staged
