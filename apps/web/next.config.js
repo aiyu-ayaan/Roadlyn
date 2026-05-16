@@ -3,7 +3,6 @@ const path = require('path');
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  swcMinify: true,
   transpilePackages: ['@roadlyn/types', '@roadlyn/ui'],
   webpack: (config) => {
     config.resolve.alias = {
