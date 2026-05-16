@@ -124,3 +124,10 @@ export function useCreateIntegration() {
     },
   });
 }
+
+export function useTestProvider() {
+  return useMutation({
+    mutationFn: (input: { providerId: string; modelId: string }) =>
+      aiService.testProvider(input),
+  });
+}

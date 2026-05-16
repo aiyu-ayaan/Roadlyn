@@ -11,12 +11,14 @@ import { useUiStore } from '@/stores/ui';
 export function Sidebar() {
   const pathname = usePathname();
   const { sidebarOpen, toggleSidebar } = useUiStore();
+  const isCourseMode = pathname.match(/^\/roadmaps\/[^/]+$/) && !pathname.endsWith('/generate');
 
   return (
     <aside
       className={cn(
         'fixed inset-y-0 left-0 z-40 hidden border-r border-white/10 bg-black/45 backdrop-blur-2xl transition-all lg:block',
         sidebarOpen ? 'w-64' : 'w-20',
+        isCourseMode && '-translate-x-full peer-hover:translate-x-0 hover:translate-x-0'
       )}
     >
       <div className="flex h-16 items-center justify-between px-4">

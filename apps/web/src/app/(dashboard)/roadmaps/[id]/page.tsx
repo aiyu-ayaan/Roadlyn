@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   BookOpen,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   Circle,
   Clock3,
@@ -17,6 +18,7 @@ import {
   LayoutPanelLeft,
   Loader2,
   Menu,
+  PlayCircle,
   Sparkles,
   Target,
   Trash2,
@@ -46,9 +48,26 @@ export default function RoadmapDetailPage() {
   const data = roadmap.data;
   const course = data?.generatedCourse;
   const isWorking = data?.status === 'QUEUED' || data?.status === 'RUNNING';
+  const showCourse = !isWorking && course;
+
+  if (showCourse) {
+    return (
+      <CourseScreen
+        course={course}
+        resources={data.researchedResources ?? course.resources ?? []}
+        notice={data.errorMessage}
+        roadmapId={data.id}
+        onDelete={async () => {
+          if (!window.confirm('Delete this generated roadmap? This cannot be undone.')) return;
+          await deleteRoadmap.mutateAsync(data.id);
+          router.push('/roadmaps');
+        }}
+      />
+    );
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-7xl px-4 pb-24 pt-6 lg:px-6 lg:pb-8 space-y-6">
       <PageHeader
         title={data?.title ?? 'Roadmap'}
         description={course?.overview ?? 'Roadlyn is building this course from live web research.'}
@@ -88,19 +107,12 @@ export default function RoadmapDetailPage() {
             <Link href="/roadmaps/generate">Generate again</Link>
           </Button>
         </Card>
-      ) : isWorking || !course ? (
+      ) : (
         <GenerationStatus
           title={data.topic ?? data.title}
           status={data.status}
           progress={data.progress}
           resources={data.researchedResources ?? []}
-        />
-      ) : (
-        <CourseScreen
-          course={course}
-          resources={data.researchedResources ?? course.resources ?? []}
-          notice={data.errorMessage}
-          roadmapId={data.id}
         />
       )}
     </div>
@@ -176,14 +188,17 @@ function CourseScreen({
   resources,
   notice,
   roadmapId,
+  onDelete,
 }: {
   course: GeneratedCourse;
   resources: CourseResource[];
   notice?: string | null;
   roadmapId: string;
+  onDelete?: () => void;
 }) {
   const [activePhaseIndex, setActivePhaseIndex] = useState(0);
   const [activeItemIndex, setActiveItemIndex] = useState(0);
+  const [expandedPhases, setExpandedPhases] = useState<Set<number>>(new Set([0]));
   const [completed, setCompleted] = useState<string[]>([]);
   const activePhase = course.phases?.[activePhaseIndex] ?? course.phases?.[0];
   const items = useMemo(() => buildCourseItems(activePhase), [activePhase]);
@@ -200,10 +215,6 @@ function CourseScreen({
     }
   }, [roadmapId]);
 
-  useEffect(() => {
-    setActiveItemIndex(0);
-  }, [activePhaseIndex]);
-
   const saveCompleted = (next: string[]) => {
     setCompleted(next);
     window.localStorage.setItem(`roadlyn-course-progress:${roadmapId}`, JSON.stringify(next));
@@ -213,143 +224,153 @@ function CourseScreen({
     saveCompleted([...completed, completionKey]);
   };
   const openResource = (resource: CourseResource) => {
-    const index = items.findIndex((item) => item.type === 'resource' && item.resource.url === resource.url);
-    if (index >= 0) {
-      setActiveItemIndex(index);
+    const phaseIndex = course.phases?.findIndex((p) => 
+      phaseResources(p).some((r) => r.url === resource.url)
+    ) ?? -1;
+    if (phaseIndex >= 0) {
+      setActivePhaseIndex(phaseIndex);
+      setExpandedPhases(new Set([...expandedPhases, phaseIndex]));
     }
   };
 
-  return (
-    <div className="relative">
-      <CourseSidebar
-        course={course}
-        activePhaseIndex={activePhaseIndex}
-        completedSet={completedSet}
-        courseProgress={courseProgress}
-        roadmapId={roadmapId}
-        onSelectPhase={setActivePhaseIndex}
-      />
+  const togglePhase = (index: number) => {
+    const next = new Set(expandedPhases);
+    if (next.has(index)) {
+      next.delete(index);
+    } else {
+      next.add(index);
+    }
+    setExpandedPhases(next);
+  };
 
-      <main className="space-y-6">
+  return (
+    <div className="relative flex flex-col h-[100dvh]">
+      <div className="flex h-14 items-center justify-between border-b border-white/10 bg-black/60 px-4 shrink-0">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/roadmaps">← Exit course</Link>
+          </Button>
+          <span className="font-semibold text-sm">{course.title}</span>
+        </div>
+        {onDelete ? (
+          <Button variant="ghost" size="sm" className="text-red-400 hover:text-red-300" onClick={onDelete}>
+            <Trash2 className="size-4 mr-2" /> Delete
+          </Button>
+        ) : null}
+      </div>
+
+      <main className="flex-1 flex flex-col min-h-0">
         {notice ? (
-          <Card className="border-amber-400/20 bg-amber-500/10 p-4 text-sm leading-6 text-amber-100">
+          <div className="border-b border-amber-400/20 bg-amber-500/10 p-3 text-sm text-center text-amber-100 shrink-0">
             {notice}
-          </Card>
+          </div>
         ) : null}
 
-        <section className="overflow-hidden rounded-xl border border-white/10 bg-card">
-          <div className="grid min-h-[calc(100vh-14rem)] lg:grid-cols-[minmax(0,1fr)_24rem]">
-            <div className="flex min-h-[calc(100vh-14rem)] flex-col">
-              <CoursePlayer
-                course={course}
-                phase={activePhase}
-                item={activeItem}
-                onEndReached={markPhaseComplete}
-              />
-              <div className="border-t border-white/10 p-4">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <p className="text-sm font-medium">{activePhase?.title ?? course.title}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Scroll to the end of the lesson or mark it complete manually.
-                    </p>
-                  </div>
-                  <Button variant={completedSet.has(completionKey) ? 'secondary' : 'default'} onClick={markPhaseComplete}>
-                    <CheckCircle2 />
-                    {completedSet.has(completionKey) ? 'Completed' : 'Mark section complete'}
-                  </Button>
+        <section className="flex-1 flex flex-col bg-card overflow-hidden">
+          <div className="flex-1 grid lg:grid-cols-[minmax(0,1fr)_26rem] min-h-0">
+            <div className="flex h-full flex-col bg-black/40 min-h-0">
+              <div className="flex items-center justify-between border-b border-white/10 bg-black/60 p-4 shrink-0">
+                <div>
+                  <p className="text-sm font-medium text-blue-300">{activePhase?.title ?? course.title}</p>
+                  <h2 className="mt-1 text-xl font-semibold">{activeItem?.title}</h2>
+                </div>
+                <Button 
+                  variant={completedSet.has(completionKey) ? 'secondary' : 'default'} 
+                  onClick={markPhaseComplete}
+                >
+                  <CheckCircle2 className="mr-2 size-4" />
+                  {completedSet.has(completionKey) ? 'Completed' : 'Mark complete'}
+                </Button>
+              </div>
+              <div 
+                className="flex-1 overflow-y-auto min-h-0"
+                onScroll={(event) => {
+                  const target = event.currentTarget;
+                  if (target.scrollTop + target.clientHeight >= target.scrollHeight - 24) {
+                    markPhaseComplete();
+                  }
+                }}
+              >
+                <CoursePlayer
+                  course={course}
+                  phase={activePhase}
+                  item={activeItem}
+                  onEndReached={markPhaseComplete}
+                />
+                <div className="p-6 border-t border-white/10 bg-card shrink-0">
+                  <CourseOverview course={course} resources={resources} onOpenResource={openResource} />
                 </div>
               </div>
             </div>
 
-            <div className="border-t border-white/10 bg-black/20 lg:border-l lg:border-t-0">
-              <div className="border-b border-white/10 p-4">
-                <p className="text-sm font-medium">Course queue</p>
-                <p className="mt-1 text-xs text-muted-foreground">Videos, sites, GitHub links, notes, tasks, and quizzes open here.</p>
+            <div className="flex h-full flex-col border-t border-white/10 bg-black/20 lg:border-l lg:border-t-0 min-h-0">
+              <div className="border-b border-white/10 p-4 shrink-0">
+                <h3 className="font-semibold text-lg">Course Curriculum</h3>
+                <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{courseProgress}% complete</span>
+                  <span>{course.estimatedDuration}</span>
+                </div>
+                <Progress className="mt-2 h-1.5" value={courseProgress} />
               </div>
-              <div className="max-h-[calc(100vh-18rem)] overflow-y-auto p-3">
-                {items.map((item, index) => (
-                  <button
-                    key={`${item.type}-${item.title}-${index}`}
-                    type="button"
-                    onClick={() => setActiveItemIndex(index)}
-                    className={`mb-2 flex w-full items-start gap-3 rounded-lg border p-3 text-left text-sm transition hover:border-blue-400/30 ${activeItemIndex === index ? 'border-blue-400/40 bg-blue-500/10' : 'border-white/10 bg-white/[0.035]'}`}
-                  >
-                    <ItemIcon item={item} />
-                    <span>
-                      <span className="block font-medium">{item.title}</span>
-                      <span className="mt-1 block text-xs leading-5 text-muted-foreground">{item.detail}</span>
-                    </span>
-                  </button>
-                ))}
+              <div className="flex-1 overflow-y-auto min-h-0">
+                {(course.phases ?? []).map((phase, index) => {
+                  const isExpanded = expandedPhases.has(index);
+                  const isActivePhase = activePhaseIndex === index;
+                  const isComplete = completedSet.has(`${roadmapId}:${index}`);
+                  const phaseItems = buildCourseItems(phase);
+                  
+                  return (
+                    <div key={`${phase.title}-${index}`} className="border-b border-white/5 last:border-0">
+                      <button
+                        type="button"
+                        onClick={() => togglePhase(index)}
+                        className={`flex w-full items-center justify-between p-4 text-left transition hover:bg-white/[0.04] ${isActivePhase ? 'bg-white/[0.02]' : ''}`}
+                      >
+                        <div className="flex gap-3">
+                          <span className={`mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${isComplete ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white/10'}`}>
+                            {isComplete ? <CheckCircle2 className="size-3" /> : index + 1}
+                          </span>
+                          <div>
+                            <span className="block text-sm font-medium">{phase.title}</span>
+                            <span className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+                              <span>{phaseItems.length} lessons</span>
+                              <span>•</span>
+                              <span>{phase.estimatedDuration}</span>
+                            </span>
+                          </div>
+                        </div>
+                        <ChevronDown className={`size-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                      </button>
+                      
+                      {isExpanded && (
+                        <div className="bg-black/20 pb-2 pt-1">
+                          {phaseItems.map((item, itemIdx) => {
+                            const isActiveItem = isActivePhase && activeItemIndex === itemIdx;
+                            return (
+                              <button
+                                key={`${item.type}-${itemIdx}`}
+                                type="button"
+                                onClick={() => {
+                                  setActivePhaseIndex(index);
+                                  setActiveItemIndex(itemIdx);
+                                }}
+                                className={`flex w-full items-start gap-3 px-4 py-2.5 text-left text-sm transition hover:bg-white/[0.04] ${isActiveItem ? 'bg-blue-500/10 text-blue-200' : 'text-muted-foreground hover:text-foreground'}`}
+                              >
+                                <ItemIcon item={item} />
+                                <span className="leading-5">{item.title}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
         </section>
-
-        <CourseOverview course={course} resources={resources} onOpenResource={openResource} />
       </main>
-    </div>
-  );
-}
-
-function CourseSidebar({
-  course,
-  activePhaseIndex,
-  completedSet,
-  courseProgress,
-  roadmapId,
-  onSelectPhase,
-}: {
-  course: GeneratedCourse;
-  activePhaseIndex: number;
-  completedSet: Set<string>;
-  courseProgress: number;
-  roadmapId: string;
-  onSelectPhase: (index: number) => void;
-}) {
-  return (
-    <div className="group fixed left-0 top-28 z-40 hidden h-[calc(100vh-9rem)] w-10 xl:block">
-      <div className="absolute left-0 top-28 flex h-20 w-10 items-center justify-center rounded-r-lg border border-l-0 border-white/10 bg-card/95 text-muted-foreground shadow-xl">
-        <Menu className="size-4" />
-      </div>
-      <aside className="absolute left-0 top-0 h-full w-80 -translate-x-[17.75rem] overflow-hidden rounded-r-xl border border-l-0 border-white/10 bg-card/95 shadow-2xl shadow-black/30 backdrop-blur transition-transform duration-200 group-hover:translate-x-0">
-        <div className="border-b border-white/10 p-4">
-          <Badge variant="outline">{course.skillLevel}</Badge>
-          <h2 className="mt-3 text-lg font-semibold">{course.title}</h2>
-          <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
-            <Clock3 className="size-4" />
-            {course.estimatedDuration}
-          </div>
-          <Progress className="mt-4" value={courseProgress} />
-          <p className="mt-2 text-xs text-muted-foreground">{courseProgress}% complete</p>
-        </div>
-        <div className="h-[calc(100%-9rem)] overflow-y-auto">
-          {(course.phases ?? []).map((phase, index) => {
-            const isComplete = completedSet.has(`${roadmapId}:${index}`);
-            const isActive = activePhaseIndex === index;
-
-            return (
-              <button
-                key={`${phase.title}-${index}`}
-                type="button"
-                onClick={() => onSelectPhase(index)}
-                className={`block w-full border-b border-white/10 p-4 text-left transition hover:bg-white/[0.04] ${isActive ? 'bg-white/[0.06]' : ''}`}
-              >
-                <div className="flex gap-3">
-                  <span className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg text-xs ${isComplete ? 'bg-emerald-500/15 text-emerald-200' : 'bg-white/[0.06]'}`}>
-                    {isComplete ? <CheckCircle2 className="size-4" /> : index + 1}
-                  </span>
-                  <span>
-                    <span className="block text-sm font-medium">{phase.title}</span>
-                    <span className="mt-1 block text-xs text-muted-foreground">{phase.estimatedDuration}</span>
-                  </span>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </aside>
     </div>
   );
 }
@@ -366,74 +387,62 @@ function CoursePlayer({
   onEndReached: () => void;
 }) {
   const embedUrl = item?.type === 'resource' ? getEmbedUrl(item.resource.url) : null;
+  const isVideo = item?.type === 'resource' && item.resource.kind === 'youtube';
 
   return (
-    <div
-      className="min-h-0 flex-1 overflow-y-auto"
-      onScroll={(event) => {
-        const target = event.currentTarget;
-        if (target.scrollTop + target.clientHeight >= target.scrollHeight - 24) {
-          onEndReached();
-        }
-      }}
-    >
+    <div className="flex flex-col">
       {item?.type === 'resource' ? (
-        <div className="flex min-h-[34rem] flex-col">
-          <div className="flex flex-col gap-3 border-b border-white/10 p-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <Badge variant="outline">{item.resource.kind}</Badge>
-              <h2 className="mt-2 text-xl font-semibold">{item.resource.title}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">{item.resource.source}</p>
-            </div>
-            <Button variant="outline" asChild>
-              <a href={item.resource.url} target="_blank" rel="noreferrer">
-                <ArrowUpRight />
-                Open original
-              </a>
-            </Button>
-          </div>
+        <div className="flex flex-col">
           {embedUrl ? (
-            <iframe
-              title={item.resource.title}
-              src={embedUrl}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen
-              className="aspect-video w-full bg-black"
-            />
+            <div className="relative w-full border-b border-white/10 bg-black">
+              <div className="absolute right-4 top-4 z-10 flex gap-2">
+                <Button size="sm" variant="secondary" className="bg-black/50 text-xs backdrop-blur-md hover:bg-black/80 border-white/10" asChild>
+                  <a href={item.resource.url} target="_blank" rel="noreferrer">
+                    Open in new tab <ArrowUpRight className="ml-1 size-3" />
+                  </a>
+                </Button>
+              </div>
+              <iframe
+                title={item.resource.title}
+                src={embedUrl}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+                className={`w-full ${isVideo ? 'aspect-video' : 'h-[80vh] min-h-[600px] bg-white'}`}
+              />
+            </div>
           ) : (
             <ResourcePreview resource={item.resource} phase={phase} />
           )}
-          {embedUrl ? (
-            <div className="border-t border-white/10 p-5">
-              <ResourceStudyNotes resource={item.resource} phase={phase} />
-            </div>
-          ) : null}
+          <div className="p-6">
+            <ResourceStudyNotes resource={item.resource} phase={phase} />
+          </div>
         </div>
       ) : (
-        <article className="p-6">
+        <article className="p-8">
           <div className="mx-auto max-w-4xl">
             <Badge variant="outline">{phase?.difficultyLevel ?? course.skillLevel}</Badge>
-            <h1 className="mt-4 text-3xl font-semibold">{item?.title ?? phase?.title ?? course.title}</h1>
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">{phase?.description ?? course.overview}</p>
-            <div className="mt-6 rounded-xl border border-white/10 bg-black/20 p-5">
-              <h2 className="flex items-center gap-2 text-lg font-semibold">
-                <Sparkles className="size-5 text-blue-300" />
+            <h1 className="mt-4 text-4xl font-bold">{item?.title ?? phase?.title ?? course.title}</h1>
+            <p className="mt-4 text-base leading-7 text-muted-foreground">{phase?.description ?? course.overview}</p>
+            <div className="mt-8 rounded-xl border border-white/10 bg-white/[0.02] p-6 shadow-inner">
+              <h2 className="flex items-center gap-2 text-xl font-semibold text-blue-300">
+                <Sparkles className="size-5" />
                 Course summary
               </h2>
-              <p className="mt-3 text-sm leading-7 text-muted-foreground">
+              <p className="mt-4 text-base leading-8 text-muted-foreground">
                 {course.courseSummary ?? course.overview}
               </p>
             </div>
-            <div className="mt-6 grid gap-4 md:grid-cols-3">
+            <div className="mt-8 grid gap-4 sm:grid-cols-3">
               <Metric icon={GraduationCap} label="Outcomes" value={String(course.skillOutcomes?.length ?? 0)} />
               <Metric icon={BookOpen} label="Modules" value={String(course.phases?.length ?? 0)} />
               <Metric icon={Target} label="Milestones" value={String(course.milestones?.length ?? 0)} />
             </div>
-            <div className="mt-6 space-y-3">
+            <div className="mt-8 space-y-4">
               {(item?.content ?? phase?.lessonNotes ?? phase?.learningObjectives ?? []).map((line) => (
-                <p key={line} className="rounded-lg border border-white/10 bg-white/[0.035] p-4 text-sm leading-6 text-muted-foreground">
-                  {line}
-                </p>
+                <div key={line} className="flex gap-4 rounded-xl border border-white/5 bg-white/[0.02] p-5">
+                  <CheckCircle2 className="mt-1 size-5 shrink-0 text-blue-400/50" />
+                  <p className="text-base leading-7 text-muted-foreground">{line}</p>
+                </div>
               ))}
             </div>
           </div>
@@ -682,12 +691,12 @@ function Metric({ icon: Icon, label, value }: { icon: typeof GraduationCap; labe
 }
 
 function ItemIcon({ item }: { item: CourseItem }) {
-  if (item.type === 'summary') return <LayoutPanelLeft className="mt-0.5 size-4 shrink-0 text-blue-300" />;
-  if (item.type === 'practice') return <Code2 className="mt-0.5 size-4 shrink-0 text-blue-300" />;
-  if (item.type === 'quiz') return <Target className="mt-0.5 size-4 shrink-0 text-blue-300" />;
-  if (item.resource.kind === 'youtube') return <Video className="mt-0.5 size-4 shrink-0 text-blue-300" />;
-  if (item.resource.kind === 'github') return <Github className="mt-0.5 size-4 shrink-0 text-blue-300" />;
-  return <FileText className="mt-0.5 size-4 shrink-0 text-blue-300" />;
+  if (item.type === 'summary') return <LayoutPanelLeft className="mt-0.5 size-4 shrink-0" />;
+  if (item.type === 'practice') return <Code2 className="mt-0.5 size-4 shrink-0" />;
+  if (item.type === 'quiz') return <Target className="mt-0.5 size-4 shrink-0" />;
+  if (item.resource.kind === 'youtube') return <PlayCircle className="mt-0.5 size-4 shrink-0" />;
+  if (item.resource.kind === 'github') return <Github className="mt-0.5 size-4 shrink-0" />;
+  return <FileText className="mt-0.5 size-4 shrink-0" />;
 }
 
 function buildCourseItems(phase?: CoursePhase): CourseItem[] {
@@ -774,8 +783,7 @@ function getEmbedUrl(url: string) {
   if (videoId) {
     return `https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1`;
   }
-
-  return null;
+  return url;
 }
 
 function getYouTubeVideoId(url: string) {

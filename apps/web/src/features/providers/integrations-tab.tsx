@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import { Loader2, PlugZap, Star, Zap } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,7 @@ import {
   useProviders,
   useSetPlatformDefaultProvider,
   useUpdateProvider,
+  useTestProvider,
 } from '@/hooks/use-ai';
 import { aiService } from '@/services/ai/ai-service';
 import { AIProvider, AIProviderType } from '@/types';
@@ -113,11 +115,34 @@ function IntegrationCard({
   onSetDefault: () => void;
   isSettingDefault: boolean;
 }) {
+  const [testStatus, setTestStatus] = React.useState<'idle' | 'success' | 'error'>('idle');
+  const testProvider = useTestProvider();
+
   const gradient = providerGradients[provider.providerType] ?? 'from-gray-500/25 to-gray-600/25';
   const borderColor = providerBorderColors[provider.providerType] ?? 'hover:border-gray-400/30';
   const modelCount = provider.models?.length ?? 0;
-  const defaultModel = provider.models?.find((m) => m.enabled);
+  const defaultModel = provider.models?.find((m) => m.enabled) ?? provider.models?.[0]; // Fallback to first model if none enabled
   const linkedKeys = provider.apiKeys ?? [];
+
+  const handleTest = async () => {
+    if (!defaultModel) return;
+    setTestStatus('idle');
+    try {
+      const result = await testProvider.mutateAsync({
+        providerId: provider.id,
+        modelId: defaultModel.id,
+      });
+      if (result.ok) {
+        setTestStatus('success');
+      } else {
+        setTestStatus('error');
+      }
+      setTimeout(() => setTestStatus('idle'), 3000);
+    } catch {
+      setTestStatus('error');
+      setTimeout(() => setTestStatus('idle'), 3000);
+    }
+  };
 
   return (
     <Card
@@ -206,35 +231,39 @@ function IntegrationCard({
       )}
 
       {/* Actions */}
-      <div className="mt-4 flex gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={!defaultModel}
-          onClick={() =>
-            defaultModel &&
-            aiService.testProvider({
-              providerId: provider.id,
-              modelId: defaultModel.id,
-            })
-          }
-        >
-          <PlugZap className="size-3.5" />
-          Test
-        </Button>
-        <Button
-          size="sm"
-          variant={provider.isDefault ? 'secondary' : 'outline'}
-          disabled={provider.isDefault || isSettingDefault}
-          onClick={onSetDefault}
-        >
-          {isSettingDefault ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <Star className="size-3.5" />
-          )}
-          {provider.isDefault ? 'Default' : 'Set Default'}
-        </Button>
+      <div className="mt-4 flex items-center justify-between">
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant={testStatus === 'success' ? 'secondary' : testStatus === 'error' ? 'destructive' : 'outline'}
+            disabled={!defaultModel || testProvider.isPending}
+            onClick={handleTest}
+            className={testStatus === 'success' ? 'bg-green-500/20 text-green-300 hover:bg-green-500/30' : ''}
+          >
+            {testProvider.isPending ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <PlugZap className="size-3.5" />
+            )}
+            {testStatus === 'success' ? 'Success!' : testStatus === 'error' ? 'Failed' : 'Test'}
+          </Button>
+          <Button
+            size="sm"
+            variant={provider.isDefault ? 'secondary' : 'outline'}
+            disabled={provider.isDefault || isSettingDefault}
+            onClick={onSetDefault}
+          >
+            {isSettingDefault ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Star className="size-3.5" />
+            )}
+            {provider.isDefault ? 'Default' : 'Set Default'}
+          </Button>
+        </div>
+        {!defaultModel && modelCount === 0 && (
+          <span className="text-[10px] text-muted-foreground">Requires model</span>
+        )}
       </div>
     </Card>
   );
