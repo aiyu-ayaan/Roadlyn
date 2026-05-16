@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Loader2, PlugZap, Star, Zap } from 'lucide-react';
+import { Loader2, PlugZap, Star, Trash2, Zap } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -10,11 +10,11 @@ import { Switch } from '@/components/ui/switch';
 import { AddIntegrationDialog } from '@/features/providers/add-integration-dialog';
 import {
   useProviders,
+  useDeleteProvider,
   useSetPlatformDefaultProvider,
   useUpdateProvider,
   useTestProvider,
 } from '@/hooks/use-ai';
-import { aiService } from '@/services/ai/ai-service';
 import { AIProvider, AIProviderType } from '@/types';
 
 const providerGradients: Record<AIProviderType, string> = {
@@ -46,6 +46,7 @@ const providerBorderColors: Record<AIProviderType, string> = {
 export function IntegrationsTab() {
   const providers = useProviders();
   const updateProvider = useUpdateProvider();
+  const deleteProvider = useDeleteProvider();
   const setDefaultProvider = useSetPlatformDefaultProvider();
 
   if (providers.isLoading) {
@@ -94,8 +95,14 @@ export function IntegrationsTab() {
               onToggleEnabled={(enabled) =>
                 updateProvider.mutate({ id: provider.id, input: { enabled } })
               }
+              onDelete={() => {
+                if (window.confirm(`Delete the ${provider.name} integration? Its registered models and usage history will be removed. Linked API keys will be kept.`)) {
+                  deleteProvider.mutate(provider.id);
+                }
+              }}
               onSetDefault={() => setDefaultProvider.mutate(provider.id)}
               isSettingDefault={setDefaultProvider.isPending}
+              isDeleting={deleteProvider.isPending}
             />
           ))}
         </div>
@@ -107,13 +114,17 @@ export function IntegrationsTab() {
 function IntegrationCard({
   provider,
   onToggleEnabled,
+  onDelete,
   onSetDefault,
   isSettingDefault,
+  isDeleting,
 }: {
   provider: AIProvider;
   onToggleEnabled: (enabled: boolean) => void;
+  onDelete: () => void;
   onSetDefault: () => void;
   isSettingDefault: boolean;
+  isDeleting: boolean;
 }) {
   const [testStatus, setTestStatus] = React.useState<'idle' | 'success' | 'error'>('idle');
   const testProvider = useTestProvider();
@@ -250,7 +261,7 @@ function IntegrationCard({
           <Button
             size="sm"
             variant={provider.isDefault ? 'secondary' : 'outline'}
-            disabled={provider.isDefault || isSettingDefault}
+            disabled={provider.isDefault || isSettingDefault || isDeleting}
             onClick={onSetDefault}
           >
             {isSettingDefault ? (
@@ -259,6 +270,19 @@ function IntegrationCard({
               <Star className="size-3.5" />
             )}
             {provider.isDefault ? 'Default' : 'Set Default'}
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={isDeleting}
+            onClick={onDelete}
+          >
+            {isDeleting ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Trash2 className="size-3.5" />
+            )}
+            Delete
           </Button>
         </div>
         {!defaultModel && modelCount === 0 && (

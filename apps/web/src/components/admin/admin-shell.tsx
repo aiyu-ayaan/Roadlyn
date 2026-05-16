@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect } from 'react';
-import { BarChart3, Bot, KeyRound, LogOut, ShieldCheck, Users } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { BarChart3, Bot, Brain, KeyRound, LogOut, ShieldCheck, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { authService } from '@/services/auth/auth-service';
@@ -13,13 +13,15 @@ import { cn } from '@/lib/utils';
 
 const adminNavItems = [
   { href: '/admin/users', label: 'Users', icon: Users },
-  { href: '/admin/providers', label: 'AI Providers', icon: KeyRound },
+  { href: '/admin/providers/api-keys', label: 'API Keys', icon: KeyRound },
+  { href: '/admin/providers/integrations', label: 'Integrations', icon: Brain },
   { href: '/admin/token', label: 'Token Usage', icon: BarChart3 },
 ];
 
 export function AdminRoute({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const [mounted, setMounted] = useState(false);
   const { isAuthenticated, logout, setUser, user } = useAuthStore((state) => ({
     isAuthenticated: state.isAuthenticated,
     logout: state.logout,
@@ -29,6 +31,12 @@ export function AdminRoute({ children }: { children: React.ReactNode }) {
   const token = tokenStorage.getAccessToken();
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+
     if (!isAuthenticated && !token) {
       router.replace(`/admin/login?next=${encodeURIComponent(pathname)}`);
       return;
@@ -40,7 +48,11 @@ export function AdminRoute({ children }: { children: React.ReactNode }) {
         router.replace(`/admin/login?next=${encodeURIComponent(pathname)}`);
       });
     }
-  }, [isAuthenticated, logout, pathname, router, setUser, token, user]);
+  }, [isAuthenticated, logout, pathname, router, setUser, token, user, mounted]);
+
+  if (!mounted) {
+    return <AdminLoading />;
+  }
 
   if (!isAuthenticated && !token) {
     return null;

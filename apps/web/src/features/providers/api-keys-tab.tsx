@@ -92,7 +92,11 @@ export function ApiKeysTab() {
                 key={key.id}
                 apiKey={key}
                 providerType={providerType as AIProviderType}
-                onDelete={() => deleteKey.mutate(key.id)}
+                onDelete={() => {
+                  if (window.confirm(`Delete the ${key.keyName} API key? Integrations using this key may stop working.`)) {
+                    deleteKey.mutate(key.id);
+                  }
+                }}
                 isDeleting={deleteKey.isPending}
               />
             ))

@@ -70,7 +70,7 @@ export const aiService = {
     );
     return data.data;
   },
-  async disableProvider(id: string) {
+  async deleteProvider(id: string) {
     const { data } = await apiClient.delete<ApiResponse<AIProvider>>(
       `/api/ai/providers/${id}`,
     );

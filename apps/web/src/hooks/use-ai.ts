@@ -58,6 +58,18 @@ export function useUpdateProvider() {
   });
 }
 
+export function useDeleteProvider() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => aiService.deleteProvider(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.providers });
+      queryClient.invalidateQueries({ queryKey: queryKeys.keys });
+    },
+  });
+}
+
 export function useSetPlatformDefaultProvider() {
   const queryClient = useQueryClient();
 

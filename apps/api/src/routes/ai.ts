@@ -312,15 +312,31 @@ export async function aiRoutes(fastify: FastifyInstance) {
     preHandler: requireAdmin,
     schema: {
       tags: ['AI Providers'],
-      summary: 'Disable an AI provider',
+      summary: 'Delete an AI provider integration',
       security: [{ bearerAuth: [] }],
     },
   }, async (request) => {
     const { id } = z.object({ id: z.string() }).parse(request.params);
-    const provider = await fastify.db.aIProvider.update({
+    const existing = await fastify.db.aIProvider.findUnique({
       where: { id },
-      data: { enabled: false },
+      select: { id: true },
     });
+
+    if (!existing) {
+      throw new ApiError(404, 'AI_PROVIDER_NOT_FOUND', 'AI provider not found');
+    }
+
+    const provider = await fastify.db.$transaction(async (tx) => {
+      await tx.providerAPIKey.updateMany({
+        where: { providerId: id },
+        data: { providerId: null },
+      });
+
+      return tx.aIProvider.delete({
+        where: { id },
+      });
+    });
+
     await gateway.invalidateProviderCache(id);
 
     return { success: true, data: provider };
