@@ -7,10 +7,10 @@ import { cn } from '@/lib/utils';
 
 export function MobileNav() {
   const pathname = usePathname();
-  const primaryItems = mainNavItems.slice(0, 5);
+  const primaryItems = mainNavItems;
 
   return (
-    <nav className="fixed inset-x-3 bottom-3 z-50 grid grid-cols-5 rounded-2xl border border-white/10 bg-black/70 p-2 shadow-2xl shadow-black/40 backdrop-blur-2xl lg:hidden">
+    <nav className="fixed inset-x-3 bottom-3 z-50 grid grid-cols-3 rounded-2xl border border-white/10 bg-black/70 p-2 shadow-2xl shadow-black/40 backdrop-blur-2xl lg:hidden">
       {primaryItems.map((item) => {
         const Icon = item.icon;
         const active = pathname === item.href || pathname.startsWith(`${item.href}/`);

@@ -1,23 +1,9 @@
-import {
-  Compass,
-  Gauge,
-  KeyRound,
-  Map,
-  MessageSquare,
-  Settings,
-  Sparkles,
-  TrendingUp,
-  User,
-} from 'lucide-react';
+import { Compass, Gauge, KeyRound, Map, Settings, Sparkles, User } from 'lucide-react';
 
 export const mainNavItems = [
   { href: '/dashboard', label: 'Dashboard', icon: Gauge },
   { href: '/roadmaps', label: 'Roadmaps', icon: Map },
-  { href: '/workspace', label: 'AI Workspace', icon: MessageSquare },
-  { href: '/discover', label: 'Discover', icon: Compass },
-  { href: '/progress', label: 'Progress', icon: TrendingUp },
-  { href: '/settings', label: 'Settings', icon: Settings },
-  { href: '/settings/profile', label: 'Profile', icon: User },
+  { href: '/discover', label: 'Discovery', icon: Compass },
 ];
 
 export const settingsNavItems = [
