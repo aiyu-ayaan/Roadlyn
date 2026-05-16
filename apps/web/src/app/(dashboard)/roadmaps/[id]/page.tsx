@@ -480,10 +480,11 @@ function LessonContent({
 function ResourcePreview({ resource }: { resource: CourseResource }) {
   const [isLoading, setIsLoading] = useState(true);
   const sourceUrl = normalizeExternalUrl(resource.url);
+  const shouldEmbed = sourceUrl ? canEmbedResource(resource, sourceUrl) : false;
 
   useEffect(() => {
     setIsLoading(true);
-  }, [sourceUrl]);
+  }, [sourceUrl, shouldEmbed]);
 
   return (
     <div className="border-b border-white/10 bg-background">
@@ -501,7 +502,7 @@ function ResourcePreview({ resource }: { resource: CourseResource }) {
           </Button>
         ) : null}
       </div>
-      {sourceUrl ? (
+      {sourceUrl && shouldEmbed ? (
         <div className="relative h-[72vh] min-h-[560px] bg-white">
           {isLoading ? (
             <div className="absolute inset-0 z-10 grid place-items-center bg-card text-sm text-muted-foreground">
@@ -517,13 +518,13 @@ function ResourcePreview({ resource }: { resource: CourseResource }) {
           />
         </div>
       ) : (
-        <ResourcePreviewFallback resource={resource} />
+        <ResourcePreviewFallback resource={resource} sourceUrl={sourceUrl} />
       )}
     </div>
   );
 }
 
-function ResourcePreviewFallback({ resource }: { resource: CourseResource }) {
+function ResourcePreviewFallback({ resource, sourceUrl }: { resource: CourseResource; sourceUrl: string | null }) {
   return (
     <div className="grid min-h-[560px] place-items-center bg-card px-6 py-12">
       <div className="max-w-2xl rounded-lg border border-white/10 bg-white/[0.035] p-6">
@@ -533,9 +534,42 @@ function ResourcePreviewFallback({ resource }: { resource: CourseResource }) {
           {resource.summary ?? resource.freshnessRelevance}
         </p>
         <p className="mt-4 break-all text-xs text-muted-foreground">{resource.url}</p>
+        {sourceUrl ? (
+          <Button asChild className="mt-6">
+            <a href={sourceUrl} target="_blank" rel="noreferrer">
+              <ExternalLink className="size-4" />
+              Open source
+            </a>
+          </Button>
+        ) : null}
       </div>
     </div>
   );
+}
+
+function canEmbedResource(resource: CourseResource, url: string) {
+  if (resource.kind === 'github' || resource.kind === 'youtube') {
+    return false;
+  }
+
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+    return ![
+      'github.com',
+      'linkedin.com',
+      'medium.com',
+      'dev.to',
+      'reddit.com',
+      'news.ycombinator.com',
+      'udemy.com',
+      'coursera.org',
+      'classcentral.com',
+      'geeksforgeeks.org',
+      'freecodecamp.org',
+    ].some((blockedHost) => host === blockedHost || host.endsWith(`.${blockedHost}`));
+  } catch {
+    return false;
+  }
 }
 
 function ResourceStudyNotes({ resource, phase }: { resource: CourseResource; phase?: CoursePhase }) {
