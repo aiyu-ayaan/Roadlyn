@@ -216,7 +216,10 @@ export class AIGatewayService {
           enabled: true,
         },
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: [
+        { provider: { isDefault: 'desc' } },
+        { createdAt: 'asc' },
+      ],
       include: { provider: true },
     });
 

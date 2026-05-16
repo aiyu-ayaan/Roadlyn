@@ -51,6 +51,15 @@ export function useUpdateProvider() {
   });
 }
 
+export function useSetPlatformDefaultProvider() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (providerId: string) => aiService.setPlatformDefaultProvider(providerId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.providers }),
+  });
+}
+
 export function useCreateModel() {
   const queryClient = useQueryClient();
 

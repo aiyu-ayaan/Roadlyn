@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { requireScope } from '../middleware/auth';
+import { requireAdmin, requireScope } from '../middleware/auth';
 import { AIGatewayService } from '../services/ai-gateway-service';
 import { encryptSecret } from '../utils/crypto';
 import { ApiError } from '../utils/errors';
@@ -25,6 +25,7 @@ const providerSchema = z.object({
   supportsVision: z.boolean().default(false),
   supportsEmbeddings: z.boolean().default(false),
   enabled: z.boolean().default(true),
+  isDefault: z.boolean().default(false),
 });
 
 const modelSchema = z.object({
@@ -82,6 +83,7 @@ const providerBodyJsonSchema = {
     supportsVision: { type: 'boolean' },
     supportsEmbeddings: { type: 'boolean' },
     enabled: { type: 'boolean' },
+    isDefault: { type: 'boolean' },
   },
 };
 
@@ -89,7 +91,7 @@ export async function aiRoutes(fastify: FastifyInstance) {
   const gateway = new AIGatewayService(fastify.db, fastify.redis);
 
   fastify.post('/ai/providers', {
-    preHandler: requireScope('ai:write'),
+    preHandler: requireAdmin,
     schema: {
       tags: ['AI Providers'],
       summary: 'Register a dynamic AI provider',
@@ -98,6 +100,10 @@ export async function aiRoutes(fastify: FastifyInstance) {
     },
   }, async (request, reply) => {
     const input = providerSchema.parse(request.body);
+    if (input.isDefault) {
+      await fastify.db.aIProvider.updateMany({ data: { isDefault: false } });
+    }
+
     const provider = await fastify.db.aIProvider.create({ data: input });
     await gateway.invalidateProviderCache(provider.id);
     reply.status(201);
@@ -122,7 +128,7 @@ export async function aiRoutes(fastify: FastifyInstance) {
   });
 
   fastify.patch('/ai/providers/:id', {
-    preHandler: requireScope('ai:write'),
+    preHandler: requireAdmin,
     schema: {
       tags: ['AI Providers'],
       summary: 'Update an AI provider',
@@ -132,6 +138,13 @@ export async function aiRoutes(fastify: FastifyInstance) {
   }, async (request) => {
     const { id } = z.object({ id: z.string() }).parse(request.params);
     const input = providerSchema.partial().parse(request.body);
+    if (input.isDefault) {
+      await fastify.db.aIProvider.updateMany({
+        where: { id: { not: id } },
+        data: { isDefault: false },
+      });
+    }
+
     const provider = await fastify.db.aIProvider.update({
       where: { id },
       data: input,
@@ -142,7 +155,7 @@ export async function aiRoutes(fastify: FastifyInstance) {
   });
 
   fastify.delete('/ai/providers/:id', {
-    preHandler: requireScope('ai:write'),
+    preHandler: requireAdmin,
     schema: {
       tags: ['AI Providers'],
       summary: 'Disable an AI provider',
@@ -160,7 +173,7 @@ export async function aiRoutes(fastify: FastifyInstance) {
   });
 
   fastify.post('/ai/models', {
-    preHandler: requireScope('ai:write'),
+    preHandler: requireAdmin,
     schema: {
       tags: ['AI Models'],
       summary: 'Register an AI model for a provider',
@@ -199,7 +212,7 @@ export async function aiRoutes(fastify: FastifyInstance) {
   });
 
   fastify.post('/ai/keys', {
-    preHandler: requireScope('ai:write'),
+    preHandler: requireAdmin,
     schema: {
       tags: ['AI Keys'],
       summary: 'Store an encrypted provider API key',
@@ -243,7 +256,7 @@ export async function aiRoutes(fastify: FastifyInstance) {
   });
 
   fastify.get('/ai/keys', {
-    preHandler: requireScope('ai:read'),
+    preHandler: requireAdmin,
     schema: {
       tags: ['AI Keys'],
       summary: 'List provider API key metadata',
@@ -274,7 +287,7 @@ export async function aiRoutes(fastify: FastifyInstance) {
   });
 
   fastify.delete('/ai/keys/:id', {
-    preHandler: requireScope('ai:write'),
+    preHandler: requireAdmin,
     schema: {
       tags: ['AI Keys'],
       summary: 'Disable a provider API key',
@@ -292,7 +305,7 @@ export async function aiRoutes(fastify: FastifyInstance) {
   });
 
   fastify.post('/ai/default-provider', {
-    preHandler: requireScope('ai:write'),
+    preHandler: requireAdmin,
     schema: {
       tags: ['AI Settings'],
       summary: 'Set per-user default and fallback provider',
@@ -319,7 +332,7 @@ export async function aiRoutes(fastify: FastifyInstance) {
   });
 
   fastify.post('/ai/default-model', {
-    preHandler: requireScope('ai:write'),
+    preHandler: requireAdmin,
     schema: {
       tags: ['AI Settings'],
       summary: 'Set per-user default model',
@@ -352,7 +365,7 @@ export async function aiRoutes(fastify: FastifyInstance) {
   });
 
   fastify.post('/ai/test-provider', {
-    preHandler: requireScope('ai:write'),
+    preHandler: requireAdmin,
     schema: {
       tags: ['AI Gateway'],
       summary: 'Test a provider/model connection',

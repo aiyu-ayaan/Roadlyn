@@ -17,6 +17,7 @@ export interface ProviderInput {
   supportsVision?: boolean;
   supportsEmbeddings?: boolean;
   enabled?: boolean;
+  isDefault?: boolean;
 }
 
 export interface ModelInput {
@@ -112,6 +113,13 @@ export const aiService = {
     const { data } = await apiClient.post<
       ApiResponse<{ ok: boolean; status: number; providerId: string; modelId: string }>
     >('/api/ai/test-provider', input);
+    return data.data;
+  },
+  async setPlatformDefaultProvider(providerId: string) {
+    const { data } = await apiClient.post<ApiResponse<AIProvider>>(
+      '/api/admin/ai/default-provider',
+      { providerId },
+    );
     return data.data;
   },
 };

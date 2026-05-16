@@ -70,6 +70,7 @@ export async function authRoutes(fastify: FastifyInstance) {
         email: true,
         name: true,
         avatar: true,
+        role: true,
       },
     });
 
@@ -205,16 +206,23 @@ export async function authRoutes(fastify: FastifyInstance) {
               avatar: existingByEmail.avatar ?? githubUser.avatar_url,
             },
           })
-        : await fastify.db.user.create({
-            data: {
-              email,
-              githubId: String(githubUser.id),
-              name: githubUser.name ?? githubUser.login,
-              avatar: githubUser.avatar_url,
-            },
+        : await fastify.db.$transaction(async (tx) => {
+            const userCount = await tx.user.count();
+
+            return tx.user.create({
+              data: {
+                email,
+                githubId: String(githubUser.id),
+                name: githubUser.name ?? githubUser.login,
+                avatar: githubUser.avatar_url,
+                role: userCount === 0 ? 'ADMIN' : 'USER',
+              },
+            });
           });
 
-    const scopes = ['ai:read', 'ai:write'];
+    const scopes = user.role === 'ADMIN'
+      ? ['ai:read', 'ai:write', 'ai:admin']
+      : ['ai:read', 'ai:write'];
     const accessToken = fastify.jwt.sign(
       {
         userId: user.id,

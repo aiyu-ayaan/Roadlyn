@@ -20,6 +20,7 @@ async function main() {
       supportsVision: true,
       supportsEmbeddings: true,
       enabled: true,
+      isDefault: true,
     },
   });
 

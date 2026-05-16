@@ -29,3 +29,23 @@ export function requireScope(scope: string) {
     }
   };
 }
+
+export async function requireAdmin(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  await requireAuth(request, reply);
+
+  if (!request.auth?.userId) {
+    throw new ApiError(403, 'ADMIN_REQUIRED', 'Admin access requires a user session');
+  }
+
+  const user = await request.server.db.user.findUnique({
+    where: { id: request.auth.userId },
+    select: { role: true },
+  });
+
+  if (user?.role !== 'ADMIN') {
+    throw new ApiError(403, 'ADMIN_REQUIRED', 'Admin access required');
+  }
+}

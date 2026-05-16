@@ -24,7 +24,18 @@ export interface AuthUser {
   email: string;
   name?: string;
   avatar?: string | null;
-  role?: 'user' | 'admin';
+  role?: 'USER' | 'ADMIN';
+}
+
+export interface AdminUser extends AuthUser {
+  role: 'USER' | 'ADMIN';
+  createdAt: string;
+  updatedAt: string;
+  _count: {
+    roadmaps: number;
+    sessions: number;
+    providerKeys: number;
+  };
 }
 
 export interface TokenResponse {
@@ -66,6 +77,7 @@ export interface AIProvider {
   supportsVision: boolean;
   supportsEmbeddings: boolean;
   enabled: boolean;
+  isDefault: boolean;
   createdAt: string;
   updatedAt: string;
   models?: AIModel[];

@@ -12,6 +12,7 @@ import { healthRoutes } from './routes/health';
 import { authRoutes } from './routes/auth';
 import { roadmapRoutes } from './routes/roadmap';
 import { aiRoutes } from './routes/ai';
+import { adminRoutes } from './routes/admin';
 
 export async function createServer() {
   const fastify = Fastify({
@@ -79,6 +80,7 @@ export async function createServer() {
   await fastify.register(authRoutes, { prefix: '/api' });
   await fastify.register(roadmapRoutes, { prefix: '/api' });
   await fastify.register(aiRoutes, { prefix: '/api' });
+  await fastify.register(adminRoutes, { prefix: '/api' });
 
   // Error handler
   fastify.setErrorHandler((error, _request, reply) => {
@@ -87,7 +89,7 @@ export async function createServer() {
       success: false,
       error: {
         message: error.message,
-        code: 'ERROR',
+        code: 'code' in error && typeof error.code === 'string' ? error.code : 'ERROR',
       },
     });
   });
