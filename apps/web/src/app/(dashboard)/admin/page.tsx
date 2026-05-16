@@ -1,17 +1,19 @@
 'use client';
 
-import { Activity, Brain, DatabaseZap, KeyRound, ShieldCheck, Zap } from 'lucide-react';
+import { Activity, Brain, DatabaseZap, KeyRound, ShieldCheck, Users, Zap } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ProviderForms } from '@/features/providers/provider-forms';
 import { ProviderList } from '@/features/providers/provider-list';
+import { useAdminUsers } from '@/hooks/use-admin';
 import { useProviderKeys, useProviders } from '@/hooks/use-ai';
 import { useAuthStore } from '@/stores/auth';
 
 export default function AdminAIPage() {
   const user = useAuthStore((state) => state.user);
+  const users = useAdminUsers();
   const providers = useProviders();
   const keys = useProviderKeys();
   const enabledProviders = providers.data?.filter((provider) => provider.enabled).length ?? 0;
@@ -23,8 +25,8 @@ export default function AdminAIPage() {
     return (
       <div className="space-y-6">
         <PageHeader
-          title="AI Providers"
-          description="Admin access is required to manage platform AI providers."
+          title="Admin"
+          description="Admin access is required to manage users and platform AI providers."
         />
         <Card className="p-6">
           <div className="flex items-center gap-3">
@@ -44,12 +46,13 @@ export default function AdminAIPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="AI Providers"
-        description="Configure platform-owned providers, encrypted API keys, model catalogs, and default routing."
+        title="Admin"
+        description="Manage signed-in users and configure the platform AI providers used by Roadlyn."
       />
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         {[
+          { label: 'Users', value: users.data?.length ?? 0, icon: Users },
           { label: 'Enabled providers', value: enabledProviders, icon: Brain },
           { label: 'Configured models', value: modelCount, icon: DatabaseZap },
           { label: 'Active keys', value: activeKeys, icon: KeyRound },
@@ -70,7 +73,55 @@ export default function AdminAIPage() {
       <Card className="overflow-hidden p-5">
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-xl font-semibold">Provider command center</h2>
+            <h2 className="text-xl font-semibold">Users</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Signed-in Roadlyn users. The first account is assigned admin automatically.
+            </p>
+          </div>
+          <Badge variant="outline" className="border-blue-400/20 bg-blue-500/10 text-blue-200">
+            <ShieldCheck className="mr-1 size-3" />
+            Login required
+          </Badge>
+        </div>
+
+        {users.isLoading ? (
+          <div className="space-y-3">
+            <Skeleton className="h-14" />
+            <Skeleton className="h-14" />
+            <Skeleton className="h-14" />
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-lg border border-border">
+            {(users.data ?? []).map((workspaceUser) => (
+              <div
+                key={workspaceUser.id}
+                className="grid gap-3 border-b border-border px-4 py-3 last:border-b-0 md:grid-cols-[1.5fr_0.6fr_0.8fr_0.8fr]"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{workspaceUser.name ?? workspaceUser.email}</p>
+                  <p className="truncate text-xs text-muted-foreground">{workspaceUser.email}</p>
+                </div>
+                <div>
+                  <Badge variant={workspaceUser.role === 'ADMIN' ? 'success' : 'secondary'}>
+                    {workspaceUser.role}
+                  </Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {workspaceUser._count.roadmaps} roadmaps
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Joined {new Date(workspaceUser.createdAt).toLocaleDateString()}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card className="overflow-hidden p-5">
+        <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">AI provider setup</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               {defaultProvider
                 ? `${defaultProvider.name} is the current platform default.`

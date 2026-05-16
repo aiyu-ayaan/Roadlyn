@@ -37,7 +37,10 @@ const modelSchema = z.object({
   providerId: z.string().min(1),
   modelName: z.string().min(1),
   displayName: z.string().min(1),
-  contextWindow: z.coerce.number().positive().optional(),
+  contextWindow: z.preprocess(
+    (value) => (value === '' || value === null ? undefined : value),
+    z.coerce.number().positive().optional(),
+  ),
 });
 
 const keySchema = z.object({
@@ -70,9 +73,10 @@ export function ProviderForms({ providers }: { providers: AIProvider[] }) {
         <h2 className="mb-4 font-semibold">Add provider</h2>
         <form
           className="space-y-4"
-          onSubmit={providerForm.handleSubmit((values) =>
-            createProvider.mutateAsync({ ...values, baseUrl: values.baseUrl || undefined }),
-          )}
+          onSubmit={providerForm.handleSubmit(async (values) => {
+            await createProvider.mutateAsync({ ...values, baseUrl: values.baseUrl || undefined });
+            providerForm.reset({ name: '', slug: '', providerType: values.providerType, baseUrl: '' });
+          })}
         >
           <Field label="Name" error={providerForm.formState.errors.name?.message}>
             <Input {...providerForm.register('name')} />
@@ -102,7 +106,13 @@ export function ProviderForms({ providers }: { providers: AIProvider[] }) {
       </Card>
       <Card className="p-5">
         <h2 className="mb-4 font-semibold">Add model</h2>
-        <form className="space-y-4" onSubmit={modelForm.handleSubmit((values) => createModel.mutateAsync(values))}>
+        <form
+          className="space-y-4"
+          onSubmit={modelForm.handleSubmit(async (values) => {
+            await createModel.mutateAsync(values);
+            modelForm.reset({ providerId: values.providerId, modelName: '', displayName: '' });
+          })}
+        >
           <ProviderSelect providers={providers} value={modelForm.watch('providerId')} onChange={(value) => modelForm.setValue('providerId', value)} />
           <Field label="Model name" error={modelForm.formState.errors.modelName?.message}>
             <Input {...modelForm.register('modelName')} />
@@ -113,7 +123,7 @@ export function ProviderForms({ providers }: { providers: AIProvider[] }) {
           <Field label="Context window" error={modelForm.formState.errors.contextWindow?.message}>
             <Input type="number" {...modelForm.register('contextWindow')} />
           </Field>
-          <Button className="w-full" disabled={createModel.isPending}>
+          <Button className="w-full" disabled={providers.length === 0 || createModel.isPending}>
             {createModel.isPending ? <Loader2 className="animate-spin" /> : <Plus />}
             Save model
           </Button>
@@ -139,7 +149,7 @@ export function ProviderForms({ providers }: { providers: AIProvider[] }) {
             Default key
             <Switch checked={keyForm.watch('isDefault')} onCheckedChange={(value) => keyForm.setValue('isDefault', value)} />
           </label>
-          <Button className="w-full" disabled={addKey.isPending}>
+          <Button className="w-full" disabled={providers.length === 0 || addKey.isPending}>
             {addKey.isPending ? <Loader2 className="animate-spin" /> : <Plus />}
             Encrypt and save
           </Button>
@@ -163,9 +173,13 @@ function ProviderSelect({
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger><SelectValue placeholder="Select provider" /></SelectTrigger>
         <SelectContent>
-          {providers.map((provider) => (
-            <SelectItem key={provider.id} value={provider.id}>{provider.name}</SelectItem>
-          ))}
+          {providers.length === 0 ? (
+            <SelectItem value="no-providers" disabled>Create a provider first</SelectItem>
+          ) : (
+            providers.map((provider) => (
+              <SelectItem key={provider.id} value={provider.id}>{provider.name}</SelectItem>
+            ))
+          )}
         </SelectContent>
       </Select>
     </Field>
