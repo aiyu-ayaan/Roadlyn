@@ -38,15 +38,21 @@ export async function researchLearningResources(input: {
   const resultSets = await Promise.all(
     searches.map(async (search) => {
       const results = await searchDuckDuckGo(search.query);
-      return results.map((result) => ({
-        ...result,
-        kind: inferKind(result.url, search.kind),
-        freshnessRelevance: inferFreshness(result.title, result.url),
-      }));
+      return results
+        .map((result) => ({
+          ...result,
+          kind: inferKind(result.url, search.kind === 'youtube' ? 'article' : search.kind),
+          freshnessRelevance: inferFreshness(result.title, result.url),
+        }))
+        .filter((result) => search.kind !== 'youtube' || result.kind === 'youtube');
     }),
   );
+  const youtubeResults = await Promise.all([
+    searchYouTubeVideos(`${base} full course tutorial project 2025 2026`),
+    searchYouTubeVideos(`${base} roadmap tutorial beginner to advanced`),
+  ]);
 
-  const deduped = dedupeResources(resultSets.flat())
+  const deduped = dedupeResources([...youtubeResults.flat(), ...resultSets.flat()])
     .sort((a, b) => scoreResource(b) - scoreResource(a))
     .slice(0, 60);
   const withGithubMetadata = await Promise.all(
@@ -73,7 +79,7 @@ export async function researchLearningResources(input: {
 function inferKind(url: string, fallback: ResourceKind): ResourceKind {
   const normalized = url.toLowerCase();
 
-  if (normalized.includes('youtube.com') || normalized.includes('youtu.be')) return 'youtube';
+  if (isPlayableYouTubeUrl(normalized)) return 'youtube';
   if (normalized.includes('github.com')) return 'github';
   if (
     normalized.includes('/docs') ||
@@ -86,6 +92,16 @@ function inferKind(url: string, fallback: ResourceKind): ResourceKind {
   }
 
   return fallback;
+}
+
+function isPlayableYouTubeUrl(url: string) {
+  return (
+    /youtu\.be\/[^/?#]+/i.test(url) ||
+    /youtube\.com\/watch\?/i.test(url) ||
+    /youtube\.com\/embed\//i.test(url) ||
+    /youtube\.com\/shorts\//i.test(url) ||
+    /youtube\.com\/live\//i.test(url)
+  );
 }
 
 async function searchDuckDuckGo(query: string): Promise<Omit<ResearchResource, 'kind' | 'freshnessRelevance'>[]> {
@@ -123,6 +139,200 @@ async function searchDuckDuckGo(query: string): Promise<Omit<ResearchResource, '
       channelName: inferYouTubeChannel(title, resultUrl),
     };
   }).filter((result) => result.title && result.url.startsWith('http'));
+}
+
+async function searchYouTubeVideos(query: string): Promise<ResearchResource[]> {
+  const url = new URL('https://www.youtube.com/results');
+  url.searchParams.set('search_query', query);
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; RoadlynLearningResearch/0.1)',
+        Accept: 'text/html,application/xhtml+xml',
+      },
+    });
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const html = await response.text();
+    const videoRenderers = collectYouTubeVideoRenderers(extractYouTubeInitialData(html));
+    const seen = new Set<string>();
+
+    return videoRenderers
+      .map((renderer): ResearchResource | null => {
+        const videoId = readStringValue(renderer.videoId);
+        const title = readYouTubeText(renderer.title);
+        const channelName = readYouTubeText(renderer.ownerText);
+        const duration =
+          readYouTubeText(renderer.lengthText) ??
+          readNestedString(renderer, ['lengthText', 'accessibility', 'accessibilityData', 'label']);
+
+        if (!videoId || !title || seen.has(videoId) || isLikelyShortVideo(title, duration)) {
+          return null;
+        }
+
+        seen.add(videoId);
+
+        return {
+          kind: 'youtube' as const,
+          title,
+          url: `https://www.youtube.com/watch?v=${videoId}`,
+          source: channelName ?? 'YouTube',
+          summary: 'Direct YouTube video result selected for playable course lessons.',
+          freshnessRelevance: inferFreshness(title, `https://www.youtube.com/watch?v=${videoId}`),
+          stars: null,
+          duration,
+          channelName,
+        };
+      })
+      .filter((result): result is ResearchResource => Boolean(result))
+      .slice(0, 12);
+  } catch {
+    return [];
+  }
+}
+
+function extractYouTubeInitialData(html: string): unknown {
+  const marker = 'var ytInitialData = ';
+  const markerIndex = html.indexOf(marker);
+  const startIndex = markerIndex >= 0 ? html.indexOf('{', markerIndex + marker.length) : -1;
+
+  if (startIndex < 0) {
+    return null;
+  }
+
+  let depth = 0;
+  let isInsideString = false;
+  let isEscaped = false;
+
+  for (let index = startIndex; index < html.length; index++) {
+    const character = html[index];
+
+    if (isInsideString) {
+      if (isEscaped) {
+        isEscaped = false;
+      } else if (character === '\\') {
+        isEscaped = true;
+      } else if (character === '"') {
+        isInsideString = false;
+      }
+
+      continue;
+    }
+
+    if (character === '"') {
+      isInsideString = true;
+      continue;
+    }
+
+    if (character === '{') {
+      depth += 1;
+    } else if (character === '}') {
+      depth -= 1;
+
+      if (depth === 0) {
+        try {
+          return JSON.parse(html.slice(startIndex, index + 1));
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+function collectYouTubeVideoRenderers(value: unknown): Record<string, unknown>[] {
+  const renderers: Record<string, unknown>[] = [];
+  const visit = (node: unknown) => {
+    if (renderers.length >= 24 || !node || typeof node !== 'object') {
+      return;
+    }
+
+    if (Array.isArray(node)) {
+      node.forEach(visit);
+      return;
+    }
+
+    const record = node as Record<string, unknown>;
+    const renderer = asObject(record.videoRenderer);
+
+    if (renderer) {
+      renderers.push(renderer);
+      return;
+    }
+
+    Object.values(record).forEach(visit);
+  };
+
+  visit(value);
+  return renderers;
+}
+
+function readYouTubeText(value: unknown): string | null {
+  const record = asObject(value);
+
+  if (!record) {
+    return null;
+  }
+
+  const simpleText = readStringValue(record.simpleText);
+  if (simpleText) {
+    return simpleText;
+  }
+
+  if (Array.isArray(record.runs)) {
+    return record.runs
+      .map((run) => readStringValue(asObject(run)?.text))
+      .filter((text): text is string => Boolean(text))
+      .join('')
+      .trim() || null;
+  }
+
+  return null;
+}
+
+function readNestedString(record: Record<string, unknown>, path: string[]) {
+  let current: unknown = record;
+
+  for (const segment of path) {
+    current = asObject(current)?.[segment];
+  }
+
+  return readStringValue(current);
+}
+
+function readStringValue(value: unknown) {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function isLikelyShortVideo(title: string, duration: string | null) {
+  if (/#shorts?\b/i.test(title)) {
+    return true;
+  }
+
+  const seconds = duration ? parseDurationSeconds(duration) : null;
+  return seconds !== null && seconds < 120;
+}
+
+function parseDurationSeconds(duration: string) {
+  const parts = duration.split(':').map((part) => Number(part));
+
+  if (!parts.length || parts.some((part) => Number.isNaN(part))) {
+    return null;
+  }
+
+  return parts.reduce((total, part) => (total * 60) + part, 0);
+}
+
+function asObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
 }
 
 function decodeDuckDuckGoUrl(rawUrl: string) {
@@ -242,8 +452,17 @@ function dedupeResources(resources: ResearchResource[]) {
 function normalizeUrl(url: string) {
   try {
     const parsed = new URL(url);
+    const videoId = parsed.hostname.replace(/^www\./, '').endsWith('youtube.com')
+      ? parsed.searchParams.get('v')
+      : null;
     parsed.hash = '';
-    parsed.search = '';
+
+    if (videoId && parsed.pathname === '/watch') {
+      parsed.search = `?v=${videoId}`;
+    } else {
+      parsed.search = '';
+    }
+
     return parsed.toString().replace(/\/$/, '');
   } catch {
     return url;
@@ -260,6 +479,9 @@ function isLowQuality(resource: ResearchResource) {
     'download free course',
     'pdfcoffee',
     'scribd',
+    'linkedin.com',
+    'facebook.com',
+    'pinterest.',
   ].some((term) => text.includes(term));
 }
 

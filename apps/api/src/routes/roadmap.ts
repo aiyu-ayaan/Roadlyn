@@ -997,8 +997,18 @@ function normalizeResourceUrl(url: string) {
 
   try {
     const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, '').toLowerCase();
+    const videoId = host.endsWith('youtube.com') && parsed.pathname === '/watch'
+      ? parsed.searchParams.get('v')
+      : null;
     parsed.hash = '';
-    parsed.search = '';
+
+    if (videoId) {
+      parsed.search = `?v=${videoId}`;
+    } else {
+      parsed.search = '';
+    }
+
     return parsed.toString().replace(/\/$/, '').toLowerCase();
   } catch {
     return url.trim().toLowerCase();
