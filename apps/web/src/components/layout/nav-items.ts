@@ -2,8 +2,8 @@ import { Compass, Gauge, KeyRound, Map, Settings, Sparkles, User } from 'lucide-
 
 export const mainNavItems = [
   { href: '/dashboard', label: 'Dashboard', icon: Gauge },
-  { href: '/roadmaps', label: 'Roadmaps', icon: Map },
   { href: '/discover', label: 'Discovery', icon: Compass },
+  { href: '/roadmaps', label: 'Roadmaps', icon: Map },
 ];
 
 export const settingsNavItems = [
