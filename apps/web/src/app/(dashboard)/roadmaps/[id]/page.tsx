@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import {
   BookOpen,
   CheckCircle2,
+  ChevronRight,
   Clock3,
   Code2,
   FileText,
@@ -13,20 +14,24 @@ import {
   Loader2,
   PlayCircle,
   Target,
+  Trash2,
   Video,
 } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useRoadmap } from '@/hooks/use-roadmaps';
+import { useDeleteRoadmap, useRoadmap } from '@/hooks/use-roadmaps';
 import { CoursePhase, CourseResource, GeneratedCourse } from '@/types';
 
 export default function RoadmapDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const roadmap = useRoadmap(params.id);
+  const deleteRoadmap = useDeleteRoadmap();
   const data = roadmap.data;
   const course = data?.generatedCourse;
   const isWorking = data?.status === 'QUEUED' || data?.status === 'RUNNING';
@@ -37,9 +42,25 @@ export default function RoadmapDetailPage() {
         title={data?.title ?? 'Roadmap'}
         description={course?.overview ?? 'Roadlyn is building this course from live web research.'}
         action={
-          <Button variant="outline" asChild>
-            <Link href="/roadmaps">All roadmaps</Link>
-          </Button>
+          <div className="flex gap-2">
+            {data ? (
+              <Button
+                variant="outline"
+                disabled={deleteRoadmap.isPending}
+                onClick={async () => {
+                  if (!window.confirm('Delete this generated roadmap? This cannot be undone.')) return;
+                  await deleteRoadmap.mutateAsync(data.id);
+                  router.push('/roadmaps');
+                }}
+              >
+                <Trash2 />
+                Delete
+              </Button>
+            ) : null}
+            <Button variant="outline" asChild>
+              <Link href="/roadmaps">All roadmaps</Link>
+            </Button>
+          </div>
         }
       />
 
@@ -135,6 +156,9 @@ function CourseScreen({
   notice?: string | null;
 }) {
   const firstPhase = course.phases?.[0];
+  const [activePhaseIndex, setActivePhaseIndex] = useState(0);
+  const activePhase = course.phases?.[activePhaseIndex] ?? firstPhase;
+  const lessons = useMemo(() => buildLessons(activePhase), [activePhase]);
 
   return (
     <div className="grid gap-6 xl:grid-cols-[20rem_1fr]">
@@ -149,7 +173,12 @@ function CourseScreen({
         </div>
         <div className="divide-y divide-white/10">
           {(course.phases ?? []).map((phase, index) => (
-            <a key={`${phase.title}-${index}`} href={`#module-${index}`} className="block p-4 transition hover:bg-white/[0.04]">
+            <button
+              key={`${phase.title}-${index}`}
+              type="button"
+              onClick={() => setActivePhaseIndex(index)}
+              className={`block w-full p-4 text-left transition hover:bg-white/[0.04] ${activePhaseIndex === index ? 'bg-white/[0.06]' : ''}`}
+            >
               <div className="flex gap-3">
                 <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-white/[0.06] text-xs">
                   {index + 1}
@@ -159,7 +188,7 @@ function CourseScreen({
                   <p className="mt-1 text-xs text-muted-foreground">{phase.estimatedDuration}</p>
                 </div>
               </div>
-            </a>
+            </button>
           ))}
         </div>
       </Card>
@@ -175,9 +204,9 @@ function CourseScreen({
           <div className="grid min-h-[22rem] place-items-center bg-gradient-to-br from-slate-950 via-blue-950/35 to-violet-950/40 p-8 text-center">
             <div>
               <PlayCircle className="mx-auto size-14 text-blue-200" />
-              <h2 className="mt-5 text-3xl font-semibold">{firstPhase?.title ?? course.title}</h2>
+              <h2 className="mt-5 text-3xl font-semibold">{activePhase?.title ?? course.title}</h2>
               <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-                {firstPhase?.description ?? course.overview}
+                {activePhase?.description ?? course.overview}
               </p>
             </div>
           </div>
@@ -188,6 +217,37 @@ function CourseScreen({
           </div>
         </Card>
 
+        {activePhase ? (
+          <Card className="p-5">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <Badge variant="outline">Selected module</Badge>
+                <h2 className="mt-3 text-2xl font-semibold">{activePhase.title}</h2>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{activePhase.description}</p>
+              </div>
+              <Badge variant="secondary">{activePhase.estimatedDuration}</Badge>
+            </div>
+            <div className="mt-5 grid gap-3 md:grid-cols-2">
+              {lessons.map((lesson) => (
+                <a
+                  key={lesson.title}
+                  href={lesson.href}
+                  className="flex items-center justify-between rounded-lg border border-white/10 bg-black/20 p-4 text-sm transition hover:border-blue-400/30 hover:bg-white/[0.04]"
+                >
+                  <span className="flex items-center gap-3">
+                    <lesson.icon className="size-4 text-blue-300" />
+                    <span>
+                      <span className="block font-medium">{lesson.title}</span>
+                      <span className="mt-1 block text-xs text-muted-foreground">{lesson.detail}</span>
+                    </span>
+                  </span>
+                  <ChevronRight className="size-4 text-muted-foreground" />
+                </a>
+              ))}
+            </div>
+          </Card>
+        ) : null}
+
         <Tabs defaultValue="curriculum">
           <TabsList>
             <TabsTrigger value="curriculum">Curriculum</TabsTrigger>
@@ -195,9 +255,15 @@ function CourseScreen({
             <TabsTrigger value="resources">Resources</TabsTrigger>
             <TabsTrigger value="interview">Interview</TabsTrigger>
           </TabsList>
-          <TabsContent value="curriculum" className="space-y-4">
+          <TabsContent id="curriculum" value="curriculum" className="space-y-4">
             {(course.phases ?? []).map((phase, index) => (
-              <PhaseModule key={`${phase.title}-${index}`} phase={phase} index={index} />
+              <PhaseModule
+                key={`${phase.title}-${index}`}
+                phase={phase}
+                index={index}
+                active={activePhaseIndex === index}
+                onSelect={() => setActivePhaseIndex(index)}
+              />
             ))}
           </TabsContent>
           <TabsContent value="projects" className="grid gap-4 md:grid-cols-2">
@@ -243,16 +309,34 @@ function CourseScreen({
   );
 }
 
-function PhaseModule({ phase, index }: { phase: CoursePhase; index: number }) {
+function PhaseModule({
+  phase,
+  index,
+  active,
+  onSelect,
+}: {
+  phase: CoursePhase;
+  index: number;
+  active: boolean;
+  onSelect: () => void;
+}) {
   return (
-    <Card id={`module-${index}`} className="p-5">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <Badge variant="outline">Module {index + 1} · {phase.difficultyLevel}</Badge>
-          <h3 className="mt-3 text-xl font-semibold">{phase.title}</h3>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">{phase.description}</p>
+    <Card id={`module-${index}`} className={`p-5 ${active ? 'border-blue-400/30' : ''}`}>
+      <button type="button" onClick={onSelect} className="w-full text-left">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <Badge variant="outline">Module {index + 1} · {phase.difficultyLevel}</Badge>
+            <h3 className="mt-3 text-xl font-semibold">{phase.title}</h3>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">{phase.description}</p>
+          </div>
+          <Badge variant="secondary">{phase.estimatedDuration}</Badge>
         </div>
-        <Badge variant="secondary">{phase.estimatedDuration}</Badge>
+      </button>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-3">
+        <DetailList title="Prerequisites" items={phase.prerequisites ?? []} />
+        <DetailList title="Objectives" items={phase.learningObjectives ?? []} />
+        <DetailList title="Quizzes" items={(phase.quizzes ?? []).map((quiz) => quiz.question)} />
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
@@ -265,16 +349,38 @@ function PhaseModule({ phase, index }: { phase: CoursePhase; index: number }) {
             Exercises
           </h4>
           <div className="mt-3 space-y-2">
-            {[...(phase.exercises ?? []), ...(phase.miniProjects ?? [])].slice(0, 8).map((item) => (
-              <p key={item} className="flex gap-2 text-sm text-muted-foreground">
-                <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-300" />
-                {item}
-              </p>
-            ))}
+            {[...(phase.exercises ?? []), ...(phase.miniProjects ?? [])].length ? (
+              [...(phase.exercises ?? []), ...(phase.miniProjects ?? [])].slice(0, 8).map((item) => (
+                <label key={item} className="flex cursor-pointer gap-2 rounded-md p-1 text-sm text-muted-foreground hover:bg-white/[0.04]">
+                  <input type="checkbox" className="mt-1" />
+                  <span>{item}</span>
+                </label>
+              ))
+            ) : (
+              <EmptyPanel text="No exercises were generated for this module." />
+            )}
           </div>
         </Card>
       </div>
     </Card>
+  );
+}
+
+function DetailList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+      <h4 className="font-medium">{title}</h4>
+      <div className="mt-3 space-y-2">
+        {items.length ? items.slice(0, 5).map((item) => (
+          <p key={item} className="flex gap-2 text-sm text-muted-foreground">
+            <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-300" />
+            {item}
+          </p>
+        )) : (
+          <EmptyPanel text={`No ${title.toLowerCase()} generated.`} />
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -294,12 +400,55 @@ function ResourceGroup({
         {title}
       </h4>
       <div className="mt-3 space-y-3">
-        {resources.slice(0, 4).map((resource) => (
-          <ResourceLink key={resource.url} resource={resource} compact />
-        ))}
+        {resources.length ? (
+          resources.slice(0, 4).map((resource) => (
+            <ResourceLink key={resource.url} resource={resource} compact />
+          ))
+        ) : (
+          <EmptyPanel text="No source links were generated for this section." />
+        )}
       </div>
     </Card>
   );
+}
+
+function EmptyPanel({ text }: { text: string }) {
+  return (
+    <p className="rounded-md border border-dashed border-white/10 bg-black/20 p-3 text-xs leading-5 text-muted-foreground">
+      {text}
+    </p>
+  );
+}
+
+function buildLessons(phase?: CoursePhase) {
+  if (!phase) return [];
+
+  return [
+    {
+      title: 'Prerequisites',
+      detail: `${phase.prerequisites?.length ?? 0} items`,
+      href: '#curriculum',
+      icon: CheckCircle2,
+    },
+    {
+      title: 'Learning objectives',
+      detail: `${phase.learningObjectives?.length ?? 0} objectives`,
+      href: '#curriculum',
+      icon: Target,
+    },
+    {
+      title: 'Resources',
+      detail: `${(phase.officialDocs?.length ?? 0) + (phase.youtubeVideos?.length ?? 0) + (phase.githubRepos?.length ?? 0)} links`,
+      href: '#curriculum',
+      icon: BookOpen,
+    },
+    {
+      title: 'Exercises',
+      detail: `${(phase.exercises?.length ?? 0) + (phase.miniProjects?.length ?? 0)} tasks`,
+      href: '#curriculum',
+      icon: Code2,
+    },
+  ];
 }
 
 function ResourceLink({ resource, compact = false }: { resource: CourseResource; compact?: boolean }) {

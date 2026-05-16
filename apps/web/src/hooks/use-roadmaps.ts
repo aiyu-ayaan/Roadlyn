@@ -32,3 +32,15 @@ export function useGenerateRoadmap() {
     },
   });
 }
+
+export function useDeleteRoadmap() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => roadmapService.deleteRoadmap(id),
+    onSuccess: (_result, id) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.roadmaps });
+      void queryClient.removeQueries({ queryKey: queryKeys.roadmap(id) });
+    },
+  });
+}

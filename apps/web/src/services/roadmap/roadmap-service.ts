@@ -29,4 +29,8 @@ export const roadmapService = {
     );
     return data.data;
   },
+  async deleteRoadmap(id: string) {
+    const { data } = await apiClient.delete<ApiResponse<{ id: string }>>(`/api/roadmaps/${id}`);
+    return data.data;
+  },
 };

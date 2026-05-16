@@ -136,6 +136,33 @@ export async function roadmapRoutes(fastify: FastifyInstance) {
     return { success: true, data: roadmap };
   });
 
+  fastify.delete('/roadmaps/:id', {
+    preHandler: requireScope('ai:write'),
+    schema: {
+      tags: ['Roadmaps'],
+      summary: 'Delete a generated roadmap',
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request) => {
+    if (!request.auth?.userId) {
+      throw new ApiError(403, 'USER_SESSION_REQUIRED', 'Deleting a roadmap requires a user session');
+    }
+
+    const params = z.object({ id: z.string().min(1) }).parse(request.params);
+    const deleted = await fastify.db.roadmap.deleteMany({
+      where: {
+        id: params.id,
+        userId: request.auth.userId,
+      },
+    });
+
+    if (deleted.count === 0) {
+      throw new ApiError(404, 'ROADMAP_NOT_FOUND', 'Roadmap not found');
+    }
+
+    return { success: true, data: { id: params.id } };
+  });
+
   fastify.post('/roadmaps/generate', {
     preHandler: requireScope('ai:write'),
     schema: {
