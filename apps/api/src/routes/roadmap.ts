@@ -33,10 +33,8 @@ type GenerateInput = z.infer<typeof generateSchema>;
 type AIGenerateResult = Awaited<ReturnType<AIGatewayService['generateText']>>;
 
 interface AgentCourseBundle {
-  outline: unknown;
   curriculum: unknown;
   portfolio: unknown;
-  compiled?: unknown;
   result: AIGenerateResult;
 }
 
@@ -200,6 +198,20 @@ export async function roadmapRoutes(fastify: FastifyInstance) {
     return { success: true, data: { id: params.id } };
   });
 
+  fastify.get('/roadmaps/resource-preview', {
+    preHandler: requireScope('ai:read'),
+    schema: {
+      tags: ['Roadmaps'],
+      summary: 'Fetch a static in-app preview for a researched resource',
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request) => {
+    const query = z.object({ url: z.string().url() }).parse(request.query);
+    const preview = await fetchResourcePreview(query.url);
+
+    return { success: true, data: preview };
+  });
+
   fastify.post('/roadmaps/generate', {
     preHandler: requireScope('ai:write'),
     schema: {
@@ -287,7 +299,7 @@ async function runRoadmapGenerationJob(input: {
       return null;
     });
     const course = agentBundle
-      ? normalizeGeneratedCourse(agentBundle.compiled ?? composeCourseFromAgentBundle(agentBundle), input.input, researchedResources)
+      ? normalizeGeneratedCourse(composeCourseFromAgentBundle(agentBundle), input.input, researchedResources)
       : buildFallbackCourse(input.input, researchedResources);
 
     await updateRoadmapJob(fastify, roadmapId, {
@@ -320,43 +332,25 @@ async function generateCourseWithAgents(input: {
   input: GenerateInput;
   researchedResources: ResearchResource[];
 }): Promise<AgentCourseBundle> {
-  const outline = await generateAgentWithRetries({
-    ...input,
-    operation: 'roadmap.agent.planner',
-    prompt: buildPlannerPrompt(input.input, input.researchedResources),
-  });
-  const outlineJson = extractJson(outline.text);
-
   const [curriculum, portfolio] = await Promise.all([
     generateAgentWithRetries({
       ...input,
       operation: 'roadmap.agent.curriculum',
-      prompt: buildCurriculumAgentPrompt(input.input, input.researchedResources, outlineJson),
+      prompt: buildCurriculumAgentPrompt(input.input, input.researchedResources),
     }),
     generateAgentWithRetries({
       ...input,
       operation: 'roadmap.agent.portfolio',
-      prompt: buildPortfolioAgentPrompt(input.input, input.researchedResources, outlineJson),
+      prompt: buildPortfolioAgentPrompt(input.input, input.researchedResources),
     }),
   ]);
   const curriculumJson = extractJson(curriculum.text);
   const portfolioJson = extractJson(portfolio.text);
-  const compiled = await generateAgentWithRetries({
-    ...input,
-    operation: 'roadmap.agent.compiler',
-    prompt: buildCompilerPrompt(input.input, input.researchedResources, {
-      outline: outlineJson,
-      curriculum: curriculumJson,
-      portfolio: portfolioJson,
-    }),
-  });
 
   return {
-    outline: outlineJson,
     curriculum: curriculumJson,
     portfolio: portfolioJson,
-    compiled: extractJson(compiled.text),
-    result: compiled,
+    result: curriculum,
   };
 }
 
@@ -424,6 +418,119 @@ function delay(ms: number) {
   });
 }
 
+async function fetchResourcePreview(url: string) {
+  const parsed = parsePreviewUrl(url);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 7000);
+
+  try {
+    const response = await fetch(parsed.toString(), {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; RoadlynResourcePreview/0.1)',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      },
+    });
+
+    const contentType = response.headers.get('content-type') ?? '';
+    if (!response.ok || !contentType.includes('text/html')) {
+      return {
+        url: parsed.toString(),
+        title: parsed.hostname,
+        html: buildPreviewFallbackHtml(parsed.toString(), 'This resource cannot be rendered as a static page preview.'),
+      };
+    }
+
+    const html = await response.text();
+    return {
+      url: parsed.toString(),
+      title: readHtmlTitle(html) ?? parsed.hostname,
+      html: sanitizePreviewHtml(html, parsed),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function parsePreviewUrl(url: string) {
+  const parsed = new URL(url);
+  if (!['http:', 'https:'].includes(parsed.protocol) || isBlockedPreviewHost(parsed.hostname)) {
+    throw new ApiError(400, 'RESOURCE_PREVIEW_URL_BLOCKED', 'This resource URL cannot be previewed');
+  }
+
+  return parsed;
+}
+
+function isBlockedPreviewHost(hostname: string) {
+  const host = hostname.toLowerCase();
+  return (
+    host === 'localhost' ||
+    host === '0.0.0.0' ||
+    host === '127.0.0.1' ||
+    host.endsWith('.local') ||
+    host.startsWith('10.') ||
+    host.startsWith('192.168.') ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+  );
+}
+
+function sanitizePreviewHtml(html: string, baseUrl: URL) {
+  const withoutScripts = html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, '')
+    .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
+    .replace(/<meta[^>]+http-equiv=["']?content-security-policy["']?[^>]*>/gi, '');
+  const withBase = withoutScripts.replace(
+    /<head([^>]*)>/i,
+    `<head$1><base href="${escapeHtml(baseUrl.origin)}">`,
+  );
+
+  if (withBase !== withoutScripts) {
+    return withBase;
+  }
+
+  return `<!doctype html><html><head><base href="${escapeHtml(baseUrl.origin)}"></head><body>${withoutScripts}</body></html>`;
+}
+
+function readHtmlTitle(html: string) {
+  const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  return match ? decodeHtml(stripTags(match[1])).trim() : null;
+}
+
+function buildPreviewFallbackHtml(url: string, message: string) {
+  return [
+    '<!doctype html><html><head><style>',
+    'body{font-family:system-ui,sans-serif;background:#0b0f17;color:#d8dee9;margin:0;display:grid;min-height:100vh;place-items:center}',
+    'main{max-width:680px;padding:32px;line-height:1.6} code{color:#8ab4ff;word-break:break-all}',
+    '</style></head><body><main>',
+    `<h1>Static preview unavailable</h1><p>${escapeHtml(message)}</p><p><code>${escapeHtml(url)}</code></p>`,
+    '</main></body></html>',
+  ].join('');
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function stripTags(value: string) {
+  return value.replace(/<[^>]*>/g, ' ');
+}
+
+function decodeHtml(value: string) {
+  return value
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ');
+}
+
 async function updateRoadmapJob(
   fastify: FastifyInstance,
   roadmapId: string,
@@ -477,11 +584,13 @@ function buildCourseSystemPrompt() {
   ].join('\n');
 }
 
-function buildPlannerPrompt(input: GenerateInput, researchedResources: ResearchResource[]) {
+function buildCurriculumAgentPrompt(
+  input: GenerateInput,
+  researchedResources: ResearchResource[],
+) {
   return JSON.stringify({
-    agent: 'Course architecture planner',
-    task: 'Design the complete course blueprint before writing lessons.',
-    generatedAt: new Date().toISOString(),
+    agent: 'Deep curriculum writer',
+    task: 'Write the full-length course overview and module content for a course player.',
     input: buildPromptInput(input),
     liveResearchResources: researchedResources,
     requiredOutputShape: {
@@ -491,40 +600,6 @@ function buildPlannerPrompt(input: GenerateInput, researchedResources: ResearchR
       estimatedDuration: '',
       skillLevel: '',
       skillOutcomes: [''],
-      moduleBlueprints: [
-        {
-          title: '',
-          difficultyLevel: 'beginner',
-          estimatedDuration: '',
-          purpose: '',
-          coreTopics: [''],
-          practicalOutcomes: [''],
-          assessment: '',
-        },
-      ],
-    },
-    qualityRules: [
-      'Return exactly 4 to 6 modules. Never return fewer than 4 modules.',
-      'Each module must be broad enough for a full online course section, not a tiny lesson.',
-      'The whole course should feel like a full-length professional course, usually 16-32 weeks depending on weekly hours.',
-      'Use a progression from foundations to real production work and a capstone.',
-      'Return strict JSON only.',
-    ],
-  });
-}
-
-function buildCurriculumAgentPrompt(
-  input: GenerateInput,
-  researchedResources: ResearchResource[],
-  outline: unknown,
-) {
-  return JSON.stringify({
-    agent: 'Deep curriculum writer',
-    task: 'Write the full-length module content for a course player.',
-    input: buildPromptInput(input),
-    courseOutline: outline,
-    liveResearchResources: researchedResources,
-    requiredOutputShape: {
       phases: [
         {
           title: '',
@@ -551,7 +626,9 @@ function buildCurriculumAgentPrompt(
       'Each lessonNotes item must teach a concrete concept in 2-4 sentences, not a heading.',
       'Each exercise must be actionable and specific enough for a learner to complete.',
       'Use ONLY URLs from liveResearchResources. Do not invent links.',
-      'Prefer YouTube URLs that can be embedded, official docs, and GitHub repos with practical code.',
+      'Every module should include at least one youtubeVideos item when YouTube resources exist in liveResearchResources.',
+      'Prefer YouTube URLs that can be embedded, official docs, GitHub repos with practical code, and useful articles.',
+      'Avoid repeating the same lesson notes across modules. Each module must teach a distinct part of the topic.',
       'Return strict JSON only.',
     ],
     enabledGenerationTasks: input.generationOptions,
@@ -561,13 +638,11 @@ function buildCurriculumAgentPrompt(
 function buildPortfolioAgentPrompt(
   input: GenerateInput,
   researchedResources: ResearchResource[],
-  outline: unknown,
 ) {
   return JSON.stringify({
     agent: 'Portfolio, assessment, and interview coach',
     task: 'Create the projects, milestones, certifications, interview prep, and recommended tools for the course.',
     input: buildPromptInput(input),
-    courseOutline: outline,
     liveResearchResources: researchedResources,
     requiredOutputShape: {
       projects: [
@@ -603,89 +678,6 @@ function buildPortfolioAgentPrompt(
   });
 }
 
-function buildCompilerPrompt(
-  input: GenerateInput,
-  researchedResources: ResearchResource[],
-  agentOutputs: {
-    outline: unknown;
-    curriculum: unknown;
-    portfolio: unknown;
-  },
-) {
-  return JSON.stringify({
-    agent: 'Final course compiler and quality reviewer',
-    task: 'Merge the planner, curriculum writer, and portfolio coach outputs into one complete GeneratedCourse JSON object.',
-    generatedAt: new Date().toISOString(),
-    input: buildPromptInput(input),
-    liveResearchResources: researchedResources,
-    agentOutputs,
-    requiredOutputShape: {
-      title: '',
-      overview: '',
-      courseSummary: '',
-      estimatedDuration: '',
-      skillLevel: '',
-      skillOutcomes: [''],
-      phases: [
-        {
-          title: '',
-          description: '',
-          estimatedDuration: '',
-          prerequisites: [''],
-          learningObjectives: [''],
-          tutorials: [{ title: '', source: '', url: '', summary: '', freshnessRelevance: '' }],
-          youtubeVideos: [{ title: '', channelName: null, duration: null, url: '', whyRecommended: '' }],
-          officialDocs: [{ title: '', source: '', url: '', summary: '' }],
-          githubRepos: [{ repositoryName: '', url: '', stars: null, whyUseful: '', projectRelevance: '' }],
-          exercises: [''],
-          miniProjects: [''],
-          quizzes: [{ question: '', answer: '' }],
-          lessonNotes: [''],
-          recap: '',
-          difficultyLevel: 'beginner',
-        },
-      ],
-      projects: [
-        {
-          title: '',
-          level: 'beginner',
-          description: '',
-          deliverables: [''],
-          realWorldScenario: '',
-        },
-      ],
-      resources: researchedResources,
-      interviewPrep: [
-        {
-          topic: '',
-          concepts: [''],
-          practicalQuestions: [''],
-          portfolioSuggestion: '',
-        },
-      ],
-      certifications: [{ title: '', provider: '', url: null, relevance: '' }],
-      recommendedTools: [''],
-      milestones: [{ week: '', outcome: '', checkpoint: '' }],
-    },
-    qualityRules: [
-      'The roadmap must feel like a Udemy course, roadmap.sh progression, Coursera curriculum, and personalized mentor.',
-      'Make each phase playable as an online course module with concise notes, practice tasks, resources, and a recap.',
-      'Create original course content between external resources: summaries, analogies, checklists, recaps, and next actions.',
-      'Return exactly 4 to 6 phases/modules. If an agent returned more, consolidate them. If fewer, expand them to at least 4.',
-      'Every phase must feel full-length: detailed description, 8-12 lesson notes, 6-10 objectives, 8-12 exercises, 3-5 mini projects, and 8-10 quizzes.',
-      'Do not create small one-screen modules. Each module should represent multiple hours or weeks of learning.',
-      'Start from fundamentals and progressively increase difficulty.',
-      'Balance theory, practical exercises, projects, revision checkpoints, and interview prep.',
-      'Include beginner projects, intermediate projects, and an advanced capstone project.',
-      'Rank resources by quality and freshness before placing them into modules.',
-      'Remove duplicates and low-quality resources.',
-      'Use newest tools and best practices visible in the live research payload.',
-      'Return clean structured JSON only.',
-    ],
-    enabledGenerationTasks: input.generationOptions,
-  });
-}
-
 function buildPromptInput(input: GenerateInput) {
   return {
     topic: input.topic,
@@ -699,21 +691,16 @@ function buildPromptInput(input: GenerateInput) {
 }
 
 function composeCourseFromAgentBundle(bundle: AgentCourseBundle) {
-  if (bundle.compiled) {
-    return bundle.compiled;
-  }
-
-  const outline = asRecord(bundle.outline);
   const curriculum = asRecord(bundle.curriculum);
   const portfolio = asRecord(bundle.portfolio);
 
   return {
-    title: outline?.title,
-    overview: outline?.overview,
-    courseSummary: outline?.courseSummary,
-    estimatedDuration: outline?.estimatedDuration,
-    skillLevel: outline?.skillLevel,
-    skillOutcomes: outline?.skillOutcomes,
+    title: curriculum?.title,
+    overview: curriculum?.overview,
+    courseSummary: curriculum?.courseSummary,
+    estimatedDuration: curriculum?.estimatedDuration,
+    skillLevel: curriculum?.skillLevel,
+    skillOutcomes: curriculum?.skillOutcomes,
     phases: curriculum?.phases,
     projects: portfolio?.projects,
     resources: portfolio?.resources,
@@ -761,7 +748,7 @@ function normalizeGeneratedCourse(
     milestones: recordArray(record.milestones).length ? record.milestones : fallback.milestones,
     generationMetadata: {
       strategy: 'multi-agent',
-      agentPasses: ['planner', 'curriculum', 'portfolio', 'compiler'],
+      agentPasses: ['curriculum', 'portfolio'],
       moduleCount: phases.length,
       courseDepth: input.courseDepth,
     },
@@ -783,6 +770,10 @@ function normalizePhase(
     resources.filter((resource) => resource.kind === 'github').slice(0, 4),
     resources.filter((resource) => ['article', 'course', 'community'].includes(resource.kind)).slice(0, 6),
   );
+  const officialDocs = recordArray(phase.officialDocs).length ? phase.officialDocs : fallback.officialDocs;
+  const youtubeVideos = recordArray(phase.youtubeVideos).length ? phase.youtubeVideos : fallback.youtubeVideos;
+  const githubRepos = recordArray(phase.githubRepos).length ? phase.githubRepos : fallback.githubRepos;
+  const tutorials = recordArray(phase.tutorials).length ? phase.tutorials : fallback.tutorials;
 
   return {
     title: readString(phase.title, fallback.title),
@@ -790,10 +781,10 @@ function normalizePhase(
     estimatedDuration: readString(phase.estimatedDuration, fallback.estimatedDuration),
     prerequisites: stringArray(phase.prerequisites, fallback.prerequisites).slice(0, 12),
     learningObjectives: stringArray(phase.learningObjectives, fallback.learningObjectives).slice(0, 12),
-    tutorials: recordArray(phase.tutorials).length ? phase.tutorials : fallback.tutorials,
-    youtubeVideos: recordArray(phase.youtubeVideos).length ? phase.youtubeVideos : fallback.youtubeVideos,
-    officialDocs: recordArray(phase.officialDocs).length ? phase.officialDocs : fallback.officialDocs,
-    githubRepos: recordArray(phase.githubRepos).length ? phase.githubRepos : fallback.githubRepos,
+    tutorials: ensureTutorials(tutorials, resources).slice(0, 6),
+    youtubeVideos: ensureYouTubeVideos(youtubeVideos, resources).slice(0, 4),
+    officialDocs: ensureOfficialDocs(officialDocs, resources).slice(0, 4),
+    githubRepos: ensureGithubRepos(githubRepos, resources).slice(0, 4),
     exercises: stringArray(phase.exercises, fallback.exercises).slice(0, 16),
     miniProjects: stringArray(phase.miniProjects, fallback.miniProjects).slice(0, 8),
     quizzes: recordArray(phase.quizzes).length ? phase.quizzes : fallback.quizzes,
@@ -801,6 +792,81 @@ function normalizePhase(
     recap: readString(phase.recap, fallback.recap),
     difficultyLevel: readString(phase.difficultyLevel, fallback.difficultyLevel),
   };
+}
+
+function ensureYouTubeVideos(
+  videos: unknown,
+  resources: ResearchResource[],
+) {
+  const existing = recordArray(videos);
+  const usedUrls = new Set(existing.map((item) => readString(item.url, '')));
+  const injected = resources
+    .filter((resource) => resource.kind === 'youtube' && !usedUrls.has(resource.url))
+    .map((resource) => ({
+      title: resource.title,
+      channelName: resource.channelName,
+      duration: resource.duration,
+      url: resource.url,
+      whyRecommended: resource.summary ?? resource.freshnessRelevance,
+    }));
+
+  return [...existing, ...injected];
+}
+
+function ensureOfficialDocs(
+  docs: unknown,
+  resources: ResearchResource[],
+) {
+  const existing = recordArray(docs);
+  const usedUrls = new Set(existing.map((item) => readString(item.url, '')));
+  const injected = resources
+    .filter((resource) => resource.kind === 'officialDocs' && !usedUrls.has(resource.url))
+    .map((resource) => ({
+      title: resource.title,
+      source: resource.source,
+      url: resource.url,
+      summary: resource.summary ?? resource.freshnessRelevance,
+    }));
+
+  return [...existing, ...injected];
+}
+
+function ensureGithubRepos(
+  repos: unknown,
+  resources: ResearchResource[],
+) {
+  const existing = recordArray(repos);
+  const usedUrls = new Set(existing.map((item) => readString(item.url, '')));
+  const injected = resources
+    .filter((resource) => resource.kind === 'github' && !usedUrls.has(resource.url))
+    .map((resource) => ({
+      repositoryName: resource.title,
+      url: resource.url,
+      stars: resource.stars,
+      whyUseful: resource.summary ?? 'Repository selected from live research.',
+      projectRelevance: resource.freshnessRelevance,
+    }));
+
+  return [...existing, ...injected];
+}
+
+function ensureTutorials(
+  tutorials: unknown,
+  resources: ResearchResource[],
+) {
+  const existing = recordArray(tutorials);
+  const usedUrls = new Set(existing.map((item) => readString(item.url, '')));
+  const injected = resources
+    .filter((resource) => ['article', 'course', 'community'].includes(resource.kind) && !usedUrls.has(resource.url))
+    .map((resource) => ({
+      title: resource.title,
+      source: resource.source,
+      url: resource.url,
+      summary: resource.summary ?? resource.freshnessRelevance,
+      freshnessRelevance: resource.freshnessRelevance,
+    }));
+
+  return [...existing, ...injected];
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

@@ -3,14 +3,12 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  ArrowUpRight,
   BookOpen,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   Circle,
   Code2,
-  ExternalLink,
   FileText,
   Github,
   GraduationCap,
@@ -29,6 +27,7 @@ import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useDeleteRoadmap, useRoadmap } from '@/hooks/use-roadmaps';
+import { roadmapService } from '@/services/roadmap/roadmap-service';
 import { CoursePhase, CourseProject, CourseResource, GeneratedCourse, InterviewPrep } from '@/types';
 
 type CourseItem =
@@ -394,9 +393,6 @@ function CoursePlayer({
         <div className="flex flex-col">
           {embedUrl ? (
             <div className="relative w-full border-b border-white/10 bg-black">
-              <div className="absolute right-4 top-4 z-10 flex gap-2">
-                <OpenUrlButton url={item.resource.url} label="Open in new tab" size="sm" />
-              </div>
               <iframe
                 title={item.resource.title}
                 src={embedUrl}
@@ -407,7 +403,7 @@ function CoursePlayer({
               />
             </div>
           ) : (
-            <ResourcePreview resource={item.resource} phase={phase} />
+            <ResourcePreview resource={item.resource} />
           )}
           <div className="p-6">
             <ResourceStudyNotes resource={item.resource} phase={phase} />
@@ -419,28 +415,7 @@ function CoursePlayer({
             <Badge variant="outline">{phase?.difficultyLevel ?? course.skillLevel}</Badge>
             <h1 className="mt-4 text-4xl font-bold">{item?.title ?? phase?.title ?? course.title}</h1>
             <p className="mt-4 text-base leading-7 text-muted-foreground">{phase?.description ?? course.overview}</p>
-            <div className="mt-8 rounded-xl border border-white/10 bg-white/[0.02] p-6 shadow-inner">
-              <h2 className="flex items-center gap-2 text-xl font-semibold text-blue-300">
-                <Sparkles className="size-5" />
-                Course summary
-              </h2>
-              <p className="mt-4 text-base leading-8 text-muted-foreground">
-                {course.courseSummary ?? course.overview}
-              </p>
-            </div>
-            <div className="mt-8 grid gap-4 sm:grid-cols-3">
-              <Metric icon={GraduationCap} label="Outcomes" value={String(course.skillOutcomes?.length ?? 0)} />
-              <Metric icon={BookOpen} label="Modules" value={String(course.phases?.length ?? 0)} />
-              <Metric icon={Target} label="Milestones" value={String(course.milestones?.length ?? 0)} />
-            </div>
-            <div className="mt-8 space-y-4">
-              {(item?.content ?? phase?.lessonNotes ?? phase?.learningObjectives ?? []).map((line) => (
-                <div key={line} className="flex gap-4 rounded-xl border border-white/5 bg-white/[0.02] p-5">
-                  <CheckCircle2 className="mt-1 size-5 shrink-0 text-blue-400/50" />
-                  <p className="text-base leading-7 text-muted-foreground">{line}</p>
-                </div>
-              ))}
-            </div>
+            <LessonContent item={item} course={course} phase={phase} />
           </div>
         </article>
       )}
@@ -448,32 +423,129 @@ function CoursePlayer({
   );
 }
 
-function ResourcePreview({ resource, phase }: { resource: CourseResource; phase?: CoursePhase }) {
-  return (
-    <div className="p-6">
-      <div className="mx-auto max-w-5xl">
-        <div className="rounded-xl border border-white/10 bg-black/20 p-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div>
-              <div className="flex items-center gap-2 text-blue-300">
-                {resource.kind === 'github' ? <Github className="size-5" /> : <ExternalLink className="size-5" />}
-                <span className="text-sm font-medium">{resource.kind === 'github' ? 'Repository lab' : 'Reading lesson'}</span>
-              </div>
-              <h3 className="mt-4 text-3xl font-semibold">{resource.title}</h3>
-              <p className="mt-2 text-sm text-muted-foreground">{resource.source}</p>
-            </div>
-            <OpenUrlButton url={resource.url} label="Open original" variant="outline" />
-          </div>
-          <p className="mt-5 text-sm leading-7 text-muted-foreground">
-            This site may block embedded loading, so Roadlyn keeps the learning flow inside the course and gives you the
-            original link when you need the source page. Use the notes below as the playable lesson content.
-          </p>
-        </div>
-
-        <ResourceStudyNotes resource={resource} phase={phase} />
+function LessonContent({
+  item,
+  course,
+  phase,
+}: {
+  item?: CourseItem;
+  course: GeneratedCourse;
+  phase?: CoursePhase;
+}) {
+  if (item?.type === 'practice') {
+    return (
+      <div className="mt-8 space-y-4">
+        {item.content.map((line) => (
+          <label key={line} className="flex cursor-pointer gap-4 rounded-xl border border-white/5 bg-white/[0.02] p-5 hover:bg-white/[0.04]">
+            <input type="checkbox" className="mt-1" />
+            <span className="text-base leading-7 text-muted-foreground">{line}</span>
+          </label>
+        ))}
       </div>
+    );
+  }
+
+  if (item?.type === 'quiz') {
+    return (
+      <div className="mt-8 space-y-4">
+        {(phase?.quizzes ?? []).map((quiz) => (
+          <div key={quiz.question} className="rounded-xl border border-white/5 bg-white/[0.02] p-5">
+            <p className="text-base font-medium">{quiz.question}</p>
+            <p className="mt-3 text-sm leading-7 text-muted-foreground">{quiz.answer}</p>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="mt-8 grid gap-4 sm:grid-cols-3">
+        <Metric icon={GraduationCap} label="Outcomes" value={String(course.skillOutcomes?.length ?? 0)} />
+        <Metric icon={BookOpen} label="Modules" value={String(course.phases?.length ?? 0)} />
+        <Metric icon={Target} label="Milestones" value={String(course.milestones?.length ?? 0)} />
+      </div>
+      <div className="mt-8 space-y-4">
+        {(item?.content ?? phase?.lessonNotes ?? phase?.learningObjectives ?? []).map((line) => (
+          <div key={line} className="flex gap-4 rounded-xl border border-white/5 bg-white/[0.02] p-5">
+            <Sparkles className="mt-1 size-5 shrink-0 text-blue-400/50" />
+            <p className="text-base leading-7 text-muted-foreground">{line}</p>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function ResourcePreview({ resource }: { resource: CourseResource }) {
+  const [html, setHtml] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    setIsLoading(true);
+    setHtml(null);
+
+    roadmapService.previewResource(resource.url)
+      .then((preview) => {
+        if (mounted) {
+          setHtml(preview.html);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setHtml(buildClientPreviewFallback(resource));
+        }
+      })
+      .finally(() => {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [resource]);
+
+  return (
+    <div className="border-b border-white/10 bg-white">
+      {isLoading ? (
+        <div className="grid min-h-[560px] place-items-center bg-card text-sm text-muted-foreground">
+          Loading source inside Roadlyn...
+        </div>
+      ) : (
+        <iframe
+          title={resource.title}
+          srcDoc={html ?? buildClientPreviewFallback(resource)}
+          sandbox="allow-same-origin allow-popups allow-forms"
+          className="h-[70vh] min-h-[560px] w-full bg-white"
+        />
+      )}
     </div>
   );
+}
+
+function buildClientPreviewFallback(resource: CourseResource) {
+  return [
+    '<!doctype html><html><head><style>',
+    'body{font-family:system-ui,sans-serif;background:#0b0f17;color:#d8dee9;margin:0;display:grid;min-height:100vh;place-items:center}',
+    'main{max-width:760px;padding:40px;line-height:1.7} .source{color:#93c5fd;font-size:14px} .url{color:#94a3b8;word-break:break-all;font-size:13px}',
+    '</style></head><body><main>',
+    `<p class="source">${escapeClientHtml(resource.source)}</p>`,
+    `<h1>${escapeClientHtml(resource.title)}</h1>`,
+    `<p>${escapeClientHtml(resource.summary ?? resource.freshnessRelevance)}</p>`,
+    `<p class="url">${escapeClientHtml(resource.url)}</p>`,
+    '</main></body></html>',
+  ].join('');
+}
+
+function escapeClientHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function ResourceStudyNotes({ resource, phase }: { resource: CourseResource; phase?: CoursePhase }) {
@@ -509,37 +581,6 @@ function ResourceStudyNotes({ resource, phase }: { resource: CourseResource; pha
         </div>
       </div>
     </div>
-  );
-}
-
-function OpenUrlButton({
-  url,
-  label,
-  variant = 'secondary',
-  size = 'md',
-}: {
-  url: string;
-  label: string;
-  variant?: 'default' | 'secondary' | 'ghost' | 'outline' | 'destructive';
-  size?: 'sm' | 'md' | 'lg' | 'icon';
-}) {
-  const openUrl = () => {
-    const normalized = normalizeExternalUrl(url);
-    if (!normalized) return;
-    window.open(normalized, '_blank', 'noopener,noreferrer');
-  };
-
-  return (
-    <Button
-      type="button"
-      variant={variant}
-      size={size}
-      className={size === 'sm' ? 'border-white/10 bg-black/50 text-xs backdrop-blur-md hover:bg-black/80' : undefined}
-      onClick={openUrl}
-    >
-      {label}
-      <ArrowUpRight className={size === 'sm' ? 'ml-1 size-3' : undefined} />
-    </Button>
   );
 }
 

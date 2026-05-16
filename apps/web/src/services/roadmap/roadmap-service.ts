@@ -1,5 +1,5 @@
 import { apiClient } from '@/services/api';
-import { ApiResponse, RoadmapDetail, RoadmapGenerateRequest, RoadmapGenerateResult, RoadmapStatus } from '@/types';
+import { ApiResponse, ResourcePreview, RoadmapDetail, RoadmapGenerateRequest, RoadmapGenerateResult, RoadmapStatus } from '@/types';
 
 export interface RoadmapSummary {
   id: string;
@@ -31,6 +31,12 @@ export const roadmapService = {
   },
   async deleteRoadmap(id: string) {
     const { data } = await apiClient.delete<ApiResponse<{ id: string }>>(`/api/roadmaps/${id}`);
+    return data.data;
+  },
+  async previewResource(url: string) {
+    const { data } = await apiClient.get<ApiResponse<ResourcePreview>>('/api/roadmaps/resource-preview', {
+      params: { url },
+    });
     return data.data;
   },
 };

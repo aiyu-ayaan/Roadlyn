@@ -244,6 +244,12 @@ export interface RoadmapDetail {
   updatedAt: string;
 }
 
+export interface ResourcePreview {
+  url: string;
+  title: string;
+  html: string;
+}
+
 export interface CourseResource {
   kind: 'officialDocs' | 'youtube' | 'github' | 'article' | 'course' | 'community';
   title: string;
