@@ -2,47 +2,33 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bot } from 'lucide-react';
 import { mainNavItems } from './nav-items';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { useUiStore } from '@/stores/ui';
 
 export function MobileNav() {
   const pathname = usePathname();
-  const { mobileNavOpen, setMobileNavOpen } = useUiStore();
+  const primaryItems = mainNavItems.slice(0, 5);
 
   return (
-    <Dialog open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-      <DialogContent className="left-0 top-0 h-full w-80 max-w-[85vw] translate-x-0 translate-y-0 rounded-none">
-        <DialogTitle className="flex items-center gap-2">
-          <span className="flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <Bot className="size-5" />
-          </span>
-          Roadlyn
-        </DialogTitle>
-        <nav className="mt-6 space-y-1">
-          {mainNavItems.map((item) => {
-            const Icon = item.icon;
-            const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+    <nav className="fixed inset-x-3 bottom-3 z-50 grid grid-cols-5 rounded-2xl border border-white/10 bg-black/70 p-2 shadow-2xl shadow-black/40 backdrop-blur-2xl lg:hidden">
+      {primaryItems.map((item) => {
+        const Icon = item.icon;
+        const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setMobileNavOpen(false)}
-                className={cn(
-                  'flex h-10 items-center gap-3 rounded-md px-3 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground',
-                  active && 'bg-secondary text-foreground',
-                )}
-              >
-                <Icon className="size-4" />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-      </DialogContent>
-    </Dialog>
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={cn(
+              'flex h-12 flex-col items-center justify-center gap-1 rounded-xl text-[10px] text-muted-foreground transition',
+              active && 'bg-white/[0.1] text-foreground shadow-lg shadow-blue-500/10',
+            )}
+          >
+            <Icon className="size-4" />
+            <span className="max-w-full truncate">{item.label.split(' ')[0]}</span>
+          </Link>
+        );
+      })}
+    </nav>
   );
 }

@@ -1,45 +1,77 @@
 import Link from 'next/link';
-import { ArrowRight, Bot, Map, ShieldCheck } from 'lucide-react';
+import { ArrowRight, Bot, Github, Play, Search, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-background">
-      <section className="mx-auto flex min-h-[92vh] max-w-6xl flex-col justify-center px-6 py-16">
-        <div className="max-w-3xl">
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-border bg-secondary/60 px-3 py-1 text-sm text-muted-foreground">
-            <Bot className="size-4" />
-            Dynamic AI gateway for learning roadmaps
+    <main className="relative min-h-screen overflow-hidden bg-background">
+      <div className="grid-fade pointer-events-none absolute inset-0 opacity-50" />
+      <section className="relative mx-auto flex min-h-screen max-w-7xl flex-col justify-center px-6 py-16">
+        <nav className="absolute inset-x-6 top-6 flex items-center justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3 backdrop-blur-2xl">
+          <Link href="/" className="flex items-center gap-2 font-semibold">
+            <span className="ai-glow flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-violet-500">
+              <Bot className="size-5" />
+            </span>
+            Roadlyn
+          </Link>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="ghost">
+              <Link href="/login">Sign in</Link>
+            </Button>
+            <Button asChild>
+              <Link href="/dashboard">Open app</Link>
+            </Button>
           </div>
-          <h1 className="text-5xl font-semibold tracking-normal text-foreground md:text-7xl">
+        </nav>
+
+        <div className="max-w-4xl pt-24">
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-sm text-blue-100">
+            <Sparkles className="size-4" />
+            AI-powered learning roadmaps from live web intelligence
+          </div>
+          <h1 className="gradient-text text-5xl font-semibold tracking-normal md:text-7xl">
             Roadlyn
           </h1>
-          <p className="mt-5 max-w-2xl text-lg leading-8 text-muted-foreground">
-            Generate learning paths, manage provider keys, stream AI progress, and keep
-            model choice fully dynamic from the backend.
+          <p className="mt-6 max-w-3xl text-lg leading-8 text-muted-foreground">
+            Generate personalized learning paths using AI models, tutorials, GitHub repositories,
+            videos, documentation, and live discovery signals.
           </p>
+          <div className="ai-glow mt-8 flex max-w-3xl items-center gap-3 rounded-3xl border border-white/10 bg-black/45 p-3 backdrop-blur-xl">
+            <Search className="ml-2 size-5 text-blue-200" />
+            <span className="flex-1 text-muted-foreground">What do you want to learn today?</span>
+            <Button asChild>
+              <Link href="/dashboard">
+                Generate
+                <ArrowRight />
+              </Link>
+            </Button>
+          </div>
           <div className="mt-8 flex flex-wrap gap-3">
             <Button asChild size="lg">
               <Link href="/dashboard">
-                Open dashboard
+                Launch dashboard
                 <ArrowRight />
               </Link>
             </Button>
             <Button asChild size="lg" variant="outline">
-              <Link href="/register">Create API client</Link>
+              <Link href="/workspace">
+                <Play />
+                Try workspace
+              </Link>
             </Button>
           </div>
         </div>
+
         <div className="mt-12 grid gap-4 md:grid-cols-3">
           {[
-            { icon: Bot, title: 'Provider agnostic', text: 'OpenAI, Anthropic, Ollama, custom endpoints, and future BYOK pools.' },
-            { icon: Map, title: 'Roadmap workspace', text: 'Generate, track, and revisit learning plans from a focused dashboard.' },
-            { icon: ShieldCheck, title: 'Secure by design', text: 'Bearer-token API flow and encrypted provider key management.' },
+            { icon: Bot, title: 'AI-native planning', text: 'Roadmaps that adapt to your time, level, goals, and provider stack.' },
+            { icon: Github, title: 'Live resource graph', text: 'Docs, GitHub repos, tutorials, videos, and exercises in one learning map.' },
+            { icon: Sparkles, title: 'Admin AI gateway', text: 'Platform-owned providers, encrypted keys, models, testing, and routing.' },
           ].map((item) => {
             const Icon = item.icon;
             return (
-              <div key={item.title} className="rounded-lg border border-border bg-card/70 p-5">
-                <Icon className="mb-4 size-5 text-muted-foreground" />
+              <div key={item.title} className="rounded-3xl border border-white/10 bg-white/[0.055] p-5 shadow-2xl shadow-black/20 backdrop-blur-xl">
+                <Icon className="mb-4 size-5 text-blue-300" />
                 <h2 className="font-semibold">{item.title}</h2>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.text}</p>
               </div>
