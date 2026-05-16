@@ -3,44 +3,44 @@
 @tailwind utilities;
 
 :root {
-  --background: 0 0% 100%;
-  --foreground: 0 0% 3.6%;
+  --background: 210 20% 98%;
+  --foreground: 224 28% 8%;
   --card: 0 0% 100%;
-  --card-foreground: 0 0% 3.6%;
-  --primary: 0 0% 9%;
-  --primary-foreground: 0 0% 98%;
-  --secondary: 0 0% 96.1%;
-  --secondary-foreground: 0 0% 9%;
-  --muted: 0 0% 89.5%;
-  --muted-foreground: 0 0% 45.1%;
-  --accent: 0 84.2% 60.2%;
+  --card-foreground: 224 28% 8%;
+  --primary: 222 84% 48%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 214 24% 92%;
+  --secondary-foreground: 224 28% 12%;
+  --muted: 214 24% 92%;
+  --muted-foreground: 218 12% 42%;
+  --accent: 166 84% 40%;
   --accent-foreground: 0 0% 100%;
   --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 0 0% 100%;
-  --border: 0 0% 89.5%;
-  --input: 0 0% 89.5%;
-  --ring: 0 0% 3.6%;
+  --border: 214 24% 86%;
+  --input: 214 24% 86%;
+  --ring: 222 84% 48%;
   --radius: 0.5rem;
 }
 
 .dark {
-  --background: 0 0% 3.6%;
-  --foreground: 0 0% 98%;
-  --card: 0 0% 3.6%;
-  --card-foreground: 0 0% 98%;
-  --primary: 0 0% 98%;
-  --primary-foreground: 0 0% 9%;
-  --secondary: 0 0% 14.9%;
-  --secondary-foreground: 0 0% 98%;
-  --muted: 0 0% 14.9%;
-  --muted-foreground: 0 0% 63.9%;
-  --accent: 0 84.2% 60.2%;
-  --accent-foreground: 0 0% 9%;
+  --background: 220 24% 6%;
+  --foreground: 214 32% 94%;
+  --card: 222 24% 9%;
+  --card-foreground: 214 32% 94%;
+  --primary: 211 100% 63%;
+  --primary-foreground: 220 24% 6%;
+  --secondary: 219 18% 15%;
+  --secondary-foreground: 214 32% 94%;
+  --muted: 219 18% 15%;
+  --muted-foreground: 218 12% 68%;
+  --accent: 166 84% 45%;
+  --accent-foreground: 220 24% 6%;
   --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 0 0% 9%;
-  --border: 0 0% 14.9%;
-  --input: 0 0% 14.9%;
-  --ring: 0 0% 83.1%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 219 18% 18%;
+  --input: 219 18% 18%;
+  --ring: 211 100% 63%;
 }
 
 * {
@@ -48,5 +48,20 @@
 }
 
 body {
-  @apply bg-background text-foreground;
+  @apply bg-background text-foreground antialiased;
+  font-feature-settings:
+    'rlig' 1,
+    'calt' 1;
+}
+
+::selection {
+  @apply bg-primary/30 text-foreground;
+}
+
+.app-surface {
+  @apply border border-border/70 bg-card/70 shadow-sm backdrop-blur-xl;
+}
+
+.focus-ring {
+  @apply outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
 }

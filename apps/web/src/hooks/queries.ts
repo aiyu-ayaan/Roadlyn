@@ -1,7 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient } from '@/services/api';
-
-// TODO: Add API query hooks here
-// Example structure for future hooks:
-// export const useGetRoadmaps = () => useQuery({...})
-// export const useCreateRoadmap = () => useMutation({...})
+export const queryKeys = {
+  auth: ['auth'] as const,
+  providers: ['ai', 'providers'] as const,
+  models: (providerId?: string) => ['ai', 'models', providerId] as const,
+  keys: ['ai', 'keys'] as const,
+  roadmaps: ['roadmaps'] as const,
+};
