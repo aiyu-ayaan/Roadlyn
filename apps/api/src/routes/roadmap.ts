@@ -3,14 +3,29 @@ import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { requireScope } from '../middleware/auth';
 import { AIGatewayService } from '../services/ai-gateway-service';
+import { RoadmapEmbeddingService } from '../services/roadmap-embedding-service';
+import { RoadmapMetadataService } from '../services/roadmap-metadata-service';
+import {
+  backfillPublicRoadmapSearchIndex,
+  persistRoadmapSearchMetadata,
+  RoadmapSimilarityService,
+} from '../services/roadmap-similarity-service';
+import {
+  buildHeuristicMetadata,
+  buildSearchVector,
+  normalizeSearchTerm,
+} from '../services/roadmap-search-utils';
 import { ResearchResource, researchLearningResources } from '../services/web-research-service';
 import { ApiError } from '../utils/errors';
 
-const generateSchema = z.object({
+const similarityInputSchema = z.object({
   topic: z.string().min(1),
   experienceLevel: z.string().optional(),
   goal: z.string().optional(),
   weeklyHours: z.number().int().positive().max(80).optional(),
+});
+
+const generateSchema = similarityInputSchema.extend({
   moduleCount: z.number().int().min(4).max(6).default(6),
   courseDepth: z.enum(['standard', 'full-length', 'masterclass']).default('masterclass'),
   generationOptions: z
@@ -30,7 +45,10 @@ const generateSchema = z.object({
   modelId: z.string().optional(),
   useUserDefaults: z.boolean().default(false),
   visibility: z.enum(['PRIVATE', 'PUBLIC']).default('PRIVATE'),
+  forceRegenerate: z.boolean().default(false),
 });
+
+const checkSimilarSchema = similarityInputSchema;
 
 type GenerateInput = z.infer<typeof generateSchema>;
 type AIGenerateResult = Awaited<ReturnType<AIGatewayService['generateText']>>;
@@ -87,6 +105,13 @@ interface RoadmapRecord {
 
 export async function roadmapRoutes(fastify: FastifyInstance) {
   const gateway = new AIGatewayService(fastify.db, fastify.redis);
+  const metadataService = new RoadmapMetadataService(fastify.db, fastify.redis, gateway);
+  const similarityService = new RoadmapSimilarityService(
+    fastify.db,
+    metadataService,
+    fastify.redis,
+  );
+  const embeddingService = new RoadmapEmbeddingService(fastify.db, fastify.redis);
 
   fastify.get(
     '/roadmaps',
@@ -212,6 +237,7 @@ export async function roadmapRoutes(fastify: FastifyInstance) {
             generationOptions: DEFAULT_GENERATION_OPTIONS,
             useUserDefaults: true,
             visibility: roadmap.visibility === 'PUBLIC' ? 'PUBLIC' : 'PRIVATE',
+            forceRegenerate: false,
           },
           roadmap.researchedResources as ResearchResource[]
         );
@@ -434,6 +460,71 @@ export async function roadmapRoutes(fastify: FastifyInstance) {
   );
 
   fastify.post(
+    '/roadmaps/check-similar',
+    {
+      preHandler: requireScope('ai:read'),
+      schema: {
+        tags: ['Roadmaps'],
+        summary: 'Check for similar public roadmaps before expensive generation',
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async (request) => {
+      const input = checkSimilarSchema.parse(request.body);
+      const result = await similarityService.checkSimilarity(request.auth?.userId, input);
+
+      return {
+        success: true,
+        data: {
+          metadata: result.metadata,
+          existingRoadmaps: result.existingRoadmaps,
+          shouldGenerateNewRoadmap: result.shouldGenerateNewRoadmap,
+          similarityThreshold: result.similarityThreshold,
+        },
+      };
+    }
+  );
+
+  fastify.post(
+    '/roadmaps/backfill-search-index',
+    {
+      preHandler: requireScope('ai:write'),
+      schema: {
+        tags: ['Roadmaps'],
+        summary: 'Backfill search metadata for public roadmaps missing indexes',
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async (request) => {
+      const body = z.object({ limit: z.number().int().min(1).max(500).default(50) }).parse(
+        request.body ?? {}
+      );
+      const rows = await backfillPublicRoadmapSearchIndex(fastify.db, body.limit);
+      let updated = 0;
+
+      for (const row of rows) {
+        const metadata = buildHeuristicMetadata({
+          topic: row.topic ?? row.title,
+          experienceLevel: row.experienceLevel ?? undefined,
+          goal: row.goal ?? undefined,
+          weeklyHours: row.weeklyHours ?? undefined,
+        });
+        const embedding = await embeddingService.embedSearchText(metadata.searchVector);
+        await persistRoadmapSearchMetadata(fastify.db, row.id, metadata, embedding);
+        updated += 1;
+      }
+
+      return {
+        success: true,
+        data: {
+          scanned: rows.length,
+          updated,
+        },
+      };
+    }
+  );
+
+  fastify.post(
     '/roadmaps/generate',
     {
       preHandler: requireScope('ai:write'),
@@ -453,33 +544,62 @@ export async function roadmapRoutes(fastify: FastifyInstance) {
       }
 
       const input = generateSchema.parse(request.body);
+
+      const similarity = await similarityService.checkSimilarity(
+        request.auth.userId,
+        input
+      );
+
+      if (!input.forceRegenerate && !similarity.shouldGenerateNewRoadmap) {
+        return {
+          success: true,
+          data: {
+            existingRoadmaps: similarity.existingRoadmaps,
+            shouldGenerateNewRoadmap: false,
+            metadata: similarity.metadata,
+            similarityThreshold: similarity.similarityThreshold,
+          },
+        };
+      }
+
       await assertCanGenerateRoadmap(fastify, request.auth.userId);
 
+      const metadata = similarity.metadata;
+      const embedding = await embeddingService.embedSearchText(metadata.searchVector);
       const roadmapId = randomUUID();
       const [roadmap] = await fastify.db.$queryRawUnsafe<RoadmapRecord[]>(
         `INSERT INTO "Roadmap"
-        ("id", "userId", "title", "topic", "experienceLevel", "goal", "weeklyHours", "status", "progress", "providerId", "modelId", "visibility", "createdAt", "updatedAt")
+        ("id", "userId", "title", "topic", "experienceLevel", "goal", "weeklyHours", "status", "progress", "providerId", "modelId", "visibility", "slug", "normalizedTitle", "searchableKeywords", "semanticTags", "searchVector", "embedding", "generationHash", "createdAt", "updatedAt")
        VALUES
-        ($1, $2, $3, $4, $5, $6, $7, 'QUEUED', 5, $8, $9, $10, NOW(), NOW())
+        ($1, $2, $3, $4, $5, $6, $7, 'QUEUED', 5, $8, $9, $10, $11, $12, $13::text[], $14::text[], $15, $16::double precision[], $17, NOW(), NOW())
        RETURNING "id", "title", "topic", "status", "progress", "visibility", "createdAt", "updatedAt"`,
         roadmapId,
         request.auth.userId,
-        `${input.topic} roadmap`,
+        metadata.title,
         input.topic,
         input.experienceLevel ?? null,
         input.goal ?? null,
         input.weeklyHours ?? null,
         input.providerId ?? null,
         input.modelId ?? null,
-        input.visibility
+        input.visibility,
+        input.visibility === 'PUBLIC' ? metadata.slug : null,
+        metadata.normalizedTitle,
+        metadata.searchableKeywords,
+        metadata.semanticTags,
+        metadata.searchVector,
+        embedding,
+        metadata.generationHash
       );
 
       void runRoadmapGenerationJob({
         fastify,
         gateway,
+        embeddingService,
         roadmapId: roadmap.id,
         userId: request.auth.userId,
         input,
+        metadata,
       });
 
       return {
@@ -488,6 +608,8 @@ export async function roadmapRoutes(fastify: FastifyInstance) {
           roadmapId: roadmap.id,
           roadmap,
           status: roadmap.status,
+          shouldGenerateNewRoadmap: true,
+          metadata,
         },
       };
     }
@@ -497,11 +619,13 @@ export async function roadmapRoutes(fastify: FastifyInstance) {
 async function runRoadmapGenerationJob(input: {
   fastify: FastifyInstance;
   gateway: AIGatewayService;
+  embeddingService: RoadmapEmbeddingService;
   roadmapId: string;
   userId: string;
   input: GenerateInput;
+  metadata: Awaited<ReturnType<RoadmapMetadataService['generateMetadata']>>;
 }) {
-  const { fastify, gateway, roadmapId, userId } = input;
+  const { fastify, gateway, embeddingService, roadmapId, userId, metadata } = input;
 
   try {
     await updateRoadmapJob(fastify, roadmapId, {
@@ -538,8 +662,24 @@ async function runRoadmapGenerationJob(input: {
         )
       : buildFallbackCourse(input.input, researchedResources);
 
+    const completedTitle =
+      typeof course.title === 'string' && course.title.trim() ? course.title : metadata.title;
+    const completedMetadata = {
+      ...metadata,
+      title: completedTitle,
+      normalizedTitle: normalizeSearchTerm(completedTitle),
+      searchVector: buildSearchVector({
+        title: completedTitle,
+        topic: input.input.topic,
+        keywords: metadata.searchableKeywords,
+        tags: metadata.semanticTags,
+        phrases: metadata.searchPhrases,
+      }),
+    };
+    const embedding = await embeddingService.embedSearchText(completedMetadata.searchVector);
+
     await updateRoadmapJob(fastify, roadmapId, {
-      title: course.title,
+      title: completedMetadata.title,
       status: 'COMPLETED',
       progress: 100,
       generatedCourse: course,
@@ -551,6 +691,13 @@ async function runRoadmapGenerationJob(input: {
         : undefined,
       completedAt: new Date(),
     });
+
+    await persistRoadmapSearchMetadata(
+      fastify.db,
+      roadmapId,
+      completedMetadata,
+      embedding
+    );
   } catch (error) {
     await updateRoadmapJob(fastify, roadmapId, {
       status: 'FAILED',
