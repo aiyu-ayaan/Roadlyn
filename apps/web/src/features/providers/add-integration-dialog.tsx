@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useAvailableModels, useCreateIntegration, useProviderKeys } from '@/hooks/use-ai';
-import { AIProviderType, AvailableModel, ProviderAPIKey } from '@/types';
+import { AIProviderType, AvailableModel } from '@/types';
 
 const providerTypes: { value: AIProviderType; label: string }[] = [
   { value: 'OPENAI', label: 'OpenAI' },
@@ -68,15 +68,10 @@ export function AddIntegrationDialog() {
   // Filter keys by selected provider type
   const matchingKeys = useMemo(() => {
     if (!providerType || !keys.data) return [];
-    return keys.data.filter(
-      (k) => k.providerType === providerType && k.isActive,
-    );
+    return keys.data.filter((k) => k.providerType === providerType && k.isActive);
   }, [providerType, keys.data]);
 
-  const availableModels = useAvailableModels(
-    providerType || undefined,
-    selectedKeyId || undefined,
-  );
+  const availableModels = useAvailableModels(providerType || undefined, selectedKeyId || undefined);
 
   // Auto-set name when provider changes
   useEffect(() => {
@@ -91,7 +86,7 @@ export function AddIntegrationDialog() {
     return models.filter(
       (m) =>
         m.id.toLowerCase().includes(modelSearch.toLowerCase()) ||
-        m.name.toLowerCase().includes(modelSearch.toLowerCase()),
+        m.name.toLowerCase().includes(modelSearch.toLowerCase())
     );
   }, [availableModels.data, modelSearch]);
 
@@ -181,12 +176,9 @@ export function AddIntegrationDialog() {
             {step === 'confirm' && 'Confirm Integration'}
           </DialogTitle>
           <DialogDescription>
-            {step === 'select' &&
-              'Choose a provider and an API key to fetch available models.'}
-            {step === 'models' &&
-              'Select which models you want to register for this integration.'}
-            {step === 'confirm' &&
-              'Review and confirm your new AI integration.'}
+            {step === 'select' && 'Choose a provider and an API key to fetch available models.'}
+            {step === 'models' && 'Select which models you want to register for this integration.'}
+            {step === 'confirm' && 'Review and confirm your new AI integration.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -209,9 +201,7 @@ export function AddIntegrationDialog() {
                   i + 1
                 )}
               </div>
-              {i < 2 && (
-                <div className="h-px w-8 bg-white/10" />
-              )}
+              {i < 2 && <div className="h-px w-8 bg-white/10" />}
             </div>
           ))}
         </div>
@@ -268,10 +258,7 @@ export function AddIntegrationDialog() {
             </div>
 
             <div className="flex justify-end pt-2">
-              <Button
-                disabled={!canGoToModels}
-                onClick={() => setStep('models')}
-              >
+              <Button disabled={!canGoToModels} onClick={() => setStep('models')}>
                 Next
                 <ArrowRight />
               </Button>
@@ -347,12 +334,10 @@ export function AddIntegrationDialog() {
               </Button>
               <div className="flex items-center gap-3">
                 <span className="text-sm text-muted-foreground">
-                  {selectedModels.size} model{selectedModels.size !== 1 ? 's' : ''} selected
+                  {selectedModels.size} model
+                  {selectedModels.size !== 1 ? 's' : ''} selected
                 </span>
-                <Button
-                  disabled={selectedModels.size === 0}
-                  onClick={() => setStep('confirm')}
-                >
+                <Button disabled={selectedModels.size === 0} onClick={() => setStep('confirm')}>
                   Next
                   <ArrowRight />
                 </Button>
@@ -384,9 +369,7 @@ export function AddIntegrationDialog() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">API Key</span>
-                  <span>
-                    {matchingKeys.find((k) => k.id === selectedKeyId)?.keyName ?? '—'}
-                  </span>
+                  <span>{matchingKeys.find((k) => k.id === selectedKeyId)?.keyName ?? '—'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Models</span>
@@ -415,15 +398,8 @@ export function AddIntegrationDialog() {
                 <ArrowLeft />
                 Back
               </Button>
-              <Button
-                disabled={!canConfirm || createIntegration.isPending}
-                onClick={handleCreate}
-              >
-                {createIntegration.isPending ? (
-                  <Loader2 className="animate-spin" />
-                ) : (
-                  <Check />
-                )}
+              <Button disabled={!canConfirm || createIntegration.isPending} onClick={handleCreate}>
+                {createIntegration.isPending ? <Loader2 className="animate-spin" /> : <Check />}
                 Create Integration
               </Button>
             </div>
@@ -455,9 +431,7 @@ function ModelSelectItem({
     >
       <div
         className={`flex size-5 shrink-0 items-center justify-center rounded-md border transition ${
-          selected
-            ? 'border-blue-400 bg-blue-500'
-            : 'border-white/20 bg-white/5'
+          selected ? 'border-blue-400 bg-blue-500' : 'border-white/20 bg-white/5'
         }`}
       >
         {selected && <Check className="size-3 text-white" />}
