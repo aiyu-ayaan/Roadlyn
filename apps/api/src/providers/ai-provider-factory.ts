@@ -77,7 +77,7 @@ export class AIProviderFactory {
   async validateKey(
     providerType: AIProviderType,
     apiKey: string,
-    baseUrl?: string | null,
+    baseUrl?: string | null
   ): Promise<{ valid: boolean; error?: string }> {
     try {
       const { generateText } = await import('ai');
@@ -90,12 +90,13 @@ export class AIProviderFactory {
         baseUrl,
         modelName: validationModel,
       });
+      type GenerateTextOptions = Parameters<typeof generateText>[0];
 
       const result = await generateText({
-        model: runtime.model as any,
+        model: runtime.model as GenerateTextOptions['model'],
         prompt: 'Reply with only the word: pong',
-        maxTokens: 8,
-      } as any);
+        maxOutputTokens: 8,
+      });
 
       return { valid: Boolean(result.text) };
     } catch (error) {
@@ -107,7 +108,7 @@ export class AIProviderFactory {
   async listAvailableModels(
     providerType: AIProviderType,
     apiKey: string,
-    baseUrl?: string | null,
+    baseUrl?: string | null
   ): Promise<AvailableModel[]> {
     try {
       switch (providerType) {
@@ -152,7 +153,7 @@ export class AIProviderFactory {
   private async listOpenAICompatibleModels(
     providerType: AIProviderType,
     apiKey: string,
-    baseUrl?: string | null,
+    baseUrl?: string | null
   ): Promise<AvailableModel[]> {
     const base = baseUrl ?? defaultBaseUrls[providerType] ?? defaultBaseUrls.OPENAI!;
     const response = await fetch(joinUrl(base, '/models'), {
@@ -161,7 +162,9 @@ export class AIProviderFactory {
 
     if (!response.ok) return [];
 
-    const json = (await response.json()) as { data?: Array<{ id: string; context_length?: number }> };
+    const json = (await response.json()) as {
+      data?: Array<{ id: string; context_length?: number }>;
+    };
     const models = json.data ?? [];
 
     return models
@@ -175,7 +178,7 @@ export class AIProviderFactory {
 
   private async listGeminiModels(apiKey: string): Promise<AvailableModel[]> {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
     );
 
     if (!response.ok) return [];
@@ -200,7 +203,7 @@ export class AIProviderFactory {
 
   private async listMistralModels(
     apiKey: string,
-    baseUrl?: string | null,
+    baseUrl?: string | null
   ): Promise<AvailableModel[]> {
     const base = baseUrl ?? 'https://api.mistral.ai/v1';
     const response = await fetch(joinUrl(base, '/models'), {
@@ -225,20 +228,39 @@ export class AIProviderFactory {
   private async getAnthropicModels(): Promise<AvailableModel[]> {
     // Anthropic doesn't have a public models list endpoint; return curated list
     return [
-      { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', contextWindow: 200000 },
-      { id: 'claude-opus-4-20250514', name: 'Claude Opus 4', contextWindow: 200000 },
-      { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku', contextWindow: 200000 },
-      { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', contextWindow: 200000 },
+      {
+        id: 'claude-sonnet-4-20250514',
+        name: 'Claude Sonnet 4',
+        contextWindow: 200000,
+      },
+      {
+        id: 'claude-opus-4-20250514',
+        name: 'Claude Opus 4',
+        contextWindow: 200000,
+      },
+      {
+        id: 'claude-3-5-haiku-20241022',
+        name: 'Claude 3.5 Haiku',
+        contextWindow: 200000,
+      },
+      {
+        id: 'claude-3-5-sonnet-20241022',
+        name: 'Claude 3.5 Sonnet',
+        contextWindow: 200000,
+      },
     ];
   }
 
   private async createOpenAICompatible(
     config: ProviderRuntimeConfig,
-    apiKey: string,
+    apiKey: string
   ): Promise<ProviderRuntime> {
     const { createOpenAI } = await import('@ai-sdk/openai');
     const baseURL =
-      config.baseUrl ?? defaultBaseUrls[config.providerType] ?? defaultBaseUrls.OPENAI ?? 'https://api.openai.com/v1';
+      config.baseUrl ??
+      defaultBaseUrls[config.providerType] ??
+      defaultBaseUrls.OPENAI ??
+      'https://api.openai.com/v1';
     const provider = createOpenAI({
       apiKey,
       baseURL,
@@ -256,7 +278,7 @@ export class AIProviderFactory {
 
   private async createAnthropic(
     config: ProviderRuntimeConfig,
-    apiKey: string,
+    apiKey: string
   ): Promise<ProviderRuntime> {
     const { createAnthropic } = await import('@ai-sdk/anthropic');
     const provider = createAnthropic({
@@ -276,7 +298,7 @@ export class AIProviderFactory {
 
   private async createGemini(
     config: ProviderRuntimeConfig,
-    apiKey: string,
+    apiKey: string
   ): Promise<ProviderRuntime> {
     const { createGoogleGenerativeAI } = await import('@ai-sdk/google');
     const provider = createGoogleGenerativeAI({
@@ -295,7 +317,7 @@ export class AIProviderFactory {
 
   private async createMistral(
     config: ProviderRuntimeConfig,
-    apiKey: string,
+    apiKey: string
   ): Promise<ProviderRuntime> {
     const { createMistral } = await import('@ai-sdk/mistral');
     const provider = createMistral({
