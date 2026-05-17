@@ -20,12 +20,21 @@ const tokenUsageQuerySchema = z.object({
   to: z.string().optional(),
 });
 
-const userGenerationPolicySchema = z.object({
-  maxGenerations: z.number().int().min(0).nullable().optional(),
-  generationCooldownSeconds: z.number().int().min(0).max(60 * 60 * 24 * 30).optional(),
-  unlimitedGenerations: z.boolean().optional(),
-  noGenerationCooldown: z.boolean().optional(),
-});
+const userGenerationPolicySchema = z
+  .object({
+    maxGenerations: z.number().int().min(0).nullable().optional(),
+    generationCooldownSeconds: z.number().int().min(0).max(60 * 60 * 24 * 30).optional(),
+    unlimitedGenerations: z.boolean().optional(),
+    noGenerationCooldown: z.boolean().optional(),
+  })
+  .refine(
+    (value) =>
+      value.maxGenerations !== undefined ||
+      value.generationCooldownSeconds !== undefined ||
+      value.unlimitedGenerations !== undefined ||
+      value.noGenerationCooldown !== undefined,
+    { message: 'At least one generation policy field is required' }
+  );
 
 export async function adminRoutes(fastify: FastifyInstance) {
   const gateway = new AIGatewayService(fastify.db, fastify.redis);
@@ -80,6 +89,16 @@ export async function adminRoutes(fastify: FastifyInstance) {
   }, async (request) => {
     const params = z.object({ id: z.string().min(1) }).parse(request.params);
     const input = userGenerationPolicySchema.parse(request.body);
+
+    const existing = await fastify.db.user.findUnique({
+      where: { id: params.id },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      throw new ApiError(404, 'USER_NOT_FOUND', 'User not found');
+    }
+
     const user = await fastify.db.user.update({
       where: { id: params.id },
       data: {
