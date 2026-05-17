@@ -27,6 +27,8 @@ const envSchema = z.object({
     .default('http://localhost:3001/api/auth/github/callback'),
   SENDGRID_API_KEY: z.string().optional(),
   STRIPE_API_KEY: z.string().optional(),
+  ROADMAP_SIMILARITY_THRESHOLD: z.coerce.number().min(0).max(1).default(0.85),
+  ROADMAP_METADATA_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
 });
 
 export type Env = z.infer<typeof envSchema>;
