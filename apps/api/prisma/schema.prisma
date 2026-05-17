@@ -215,6 +215,13 @@ model Roadmap {
   providerId          String?
   modelId             String?
   visibility          String    @default("PRIVATE")
+  slug                String?
+  normalizedTitle     String?
+  searchableKeywords  String[]  @default([])
+  semanticTags        String[]  @default([])
+  searchVector        String?
+  embedding           Float[]   @default([])
+  generationHash      String?
   errorMessage        String?
   completedAt         DateTime?
   createdAt           DateTime  @default(now())
@@ -225,6 +232,10 @@ model Roadmap {
   @@index([status])
   @@index([visibility])
   @@index([visibility, status])
+  @@index([generationHash])
+  @@index([normalizedTitle])
+  @@index([searchableKeywords], type: Gin)
+  @@index([semanticTags], type: Gin)
 }
 
 model RoadmapEnrollment {
