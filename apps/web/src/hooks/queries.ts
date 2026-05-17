@@ -12,4 +12,5 @@ export const queryKeys = {
   tokenUsageStats: ['admin', 'token-usage', 'stats'] as const,
   roadmaps: ['roadmaps'] as const,
   roadmap: (id?: string) => ['roadmaps', id] as const,
+  publicRoadmaps: (query?: string) => ['roadmaps', 'public', query] as const,
 };

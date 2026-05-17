@@ -1,5 +1,12 @@
 import { apiClient } from '@/services/api';
-import { ApiResponse, ResourcePreview, RoadmapDetail, RoadmapGenerateRequest, RoadmapGenerateResult, RoadmapStatus } from '@/types';
+import {
+  ApiResponse,
+  ResourcePreview,
+  RoadmapDetail,
+  RoadmapGenerateRequest,
+  RoadmapGenerateResult,
+  RoadmapStatus,
+} from '@/types';
 
 export interface RoadmapSummary {
   id: string;
@@ -7,6 +14,12 @@ export interface RoadmapSummary {
   topic?: string | null;
   status: RoadmapStatus;
   progress: number;
+  visibility?: 'PRIVATE' | 'PUBLIC' | string;
+  ownerName?: string | null;
+  ownerEmail?: string | null;
+  enrollmentCount?: number;
+  isEnrolled?: boolean;
+  source?: 'generated' | 'enrolled';
   errorMessage?: string | null;
   completedAt?: string | null;
   createdAt: string;
@@ -25,7 +38,7 @@ export const roadmapService = {
   async generate(input: RoadmapGenerateRequest) {
     const { data } = await apiClient.post<ApiResponse<RoadmapGenerateResult>>(
       '/api/roadmaps/generate',
-      input,
+      input
     );
     return data.data;
   },
@@ -33,10 +46,34 @@ export const roadmapService = {
     const { data } = await apiClient.delete<ApiResponse<{ id: string }>>(`/api/roadmaps/${id}`);
     return data.data;
   },
+  async discoverPublicRoadmaps(query?: string) {
+    const { data } = await apiClient.get<ApiResponse<RoadmapSummary[]>>(
+      '/api/roadmaps/discover/public',
+      {
+        params: query ? { q: query } : undefined,
+      }
+    );
+    return data.data;
+  },
+  async enrollRoadmap(id: string) {
+    const { data } = await apiClient.post<
+      ApiResponse<{ roadmapId: string; alreadyOwned?: boolean }>
+    >(`/api/roadmaps/${id}/enroll`);
+    return data.data;
+  },
+  async unenrollRoadmap(id: string) {
+    const { data } = await apiClient.delete<ApiResponse<{ roadmapId: string }>>(
+      `/api/roadmaps/${id}/enroll`
+    );
+    return data.data;
+  },
   async previewResource(url: string) {
-    const { data } = await apiClient.get<ApiResponse<ResourcePreview>>('/api/roadmaps/resource-preview', {
-      params: { url },
-    });
+    const { data } = await apiClient.get<ApiResponse<ResourcePreview>>(
+      '/api/roadmaps/resource-preview',
+      {
+        params: { url },
+      }
+    );
     return data.data;
   },
 };

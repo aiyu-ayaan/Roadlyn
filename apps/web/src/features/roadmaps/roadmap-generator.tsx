@@ -1,7 +1,19 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { BookOpen, Brain, CheckSquare, Github, Loader2, PlaySquare, Search, Sparkles, Trophy } from 'lucide-react';
+import {
+  BookOpen,
+  Brain,
+  CheckSquare,
+  Github,
+  Loader2,
+  Lock,
+  PlaySquare,
+  Search,
+  Sparkles,
+  Trophy,
+  Users,
+} from 'lucide-react';
 import { useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
@@ -11,7 +23,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input, Textarea } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useProviders } from '@/hooks/use-ai';
 import { useGenerateRoadmap } from '@/hooks/use-roadmaps';
 
@@ -35,6 +53,7 @@ const generationSchema = z.object({
   }),
   providerId: z.string().optional(),
   modelId: z.string().optional(),
+  visibility: z.enum(['PRIVATE', 'PUBLIC']),
 });
 
 type GenerationValues = z.infer<typeof generationSchema>;
@@ -65,9 +84,12 @@ export function RoadmapGenerator() {
       },
       providerId: '',
       modelId: '',
+      visibility: 'PRIVATE',
     },
   });
-  const selectedProvider = providers.data?.find((provider) => provider.id === form.watch('providerId'));
+  const selectedProvider = providers.data?.find(
+    (provider) => provider.id === form.watch('providerId')
+  );
   const models = useMemo(() => selectedProvider?.models ?? [], [selectedProvider]);
 
   return (
@@ -80,8 +102,9 @@ export function RoadmapGenerator() {
           </Badge>
           <h2 className="mt-4 text-2xl font-semibold">Build a full AI course</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Roadlyn creates a background job, scrapes current resources, ranks them, and generates a structured course with
-            modules, lessons, projects, quizzes, milestones, and interview prep.
+            Roadlyn creates a background job, scrapes current resources, ranks them, and generates a
+            structured course with modules, lessons, projects, quizzes, milestones, and interview
+            prep.
           </p>
         </div>
         <form
@@ -100,11 +123,18 @@ export function RoadmapGenerator() {
             <Input placeholder="AI Engineering" {...form.register('topic')} />
           </Field>
           <Field label="Experience level" error={form.formState.errors.experienceLevel?.message}>
-            <Select value={form.watch('experienceLevel')} onValueChange={(value) => form.setValue('experienceLevel', value)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+            <Select
+              value={form.watch('experienceLevel')}
+              onValueChange={(value) => form.setValue('experienceLevel', value)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 {['beginner', 'intermediate', 'advanced'].map((level) => (
-                  <SelectItem key={level} value={level}>{level}</SelectItem>
+                  <SelectItem key={level} value={level}>
+                    {level}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -121,17 +151,28 @@ export function RoadmapGenerator() {
                 value={String(form.watch('moduleCount'))}
                 onValueChange={(value) => form.setValue('moduleCount', Number(value))}
               >
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   {[4, 5, 6].map((count) => (
-                    <SelectItem key={count} value={String(count)}>{count} full modules</SelectItem>
+                    <SelectItem key={count} value={String(count)}>
+                      {count} full modules
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </Field>
             <Field label="Course depth" error={form.formState.errors.courseDepth?.message}>
-              <Select value={form.watch('courseDepth')} onValueChange={(value) => form.setValue('courseDepth', value as GenerationValues['courseDepth'])}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select
+                value={form.watch('courseDepth')}
+                onValueChange={(value) =>
+                  form.setValue('courseDepth', value as GenerationValues['courseDepth'])
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="masterclass">Masterclass</SelectItem>
                   <SelectItem value="full-length">Full-length</SelectItem>
@@ -161,7 +202,9 @@ export function RoadmapGenerator() {
                         <Icon className="size-4 text-blue-300" />
                         {task.label}
                       </span>
-                      <span className="mt-1 block text-xs leading-5 text-muted-foreground">{task.description}</span>
+                      <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                        {task.description}
+                      </span>
                     </span>
                   </label>
                 );
@@ -169,29 +212,86 @@ export function RoadmapGenerator() {
             </div>
           </div>
           <Field label="Provider">
-            <Select value={form.watch('providerId')} onValueChange={(value) => {
-              form.setValue('providerId', value);
-              form.setValue('modelId', '');
-            }}>
-              <SelectTrigger><SelectValue placeholder="Use platform default" /></SelectTrigger>
+            <Select
+              value={form.watch('providerId')}
+              onValueChange={(value) => {
+                form.setValue('providerId', value);
+                form.setValue('modelId', '');
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Use platform default" />
+              </SelectTrigger>
               <SelectContent>
                 {(providers.data ?? []).map((provider) => (
                   <SelectItem key={provider.id} value={provider.id}>
-                    {provider.name}{provider.isDefault ? ' · default' : ''}
+                    {provider.name}
+                    {provider.isDefault ? ' · default' : ''}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </Field>
           <Field label="Model">
-            <Select value={form.watch('modelId')} onValueChange={(value) => form.setValue('modelId', value)}>
-              <SelectTrigger><SelectValue placeholder="Use provider default model" /></SelectTrigger>
+            <Select
+              value={form.watch('modelId')}
+              onValueChange={(value) => form.setValue('modelId', value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Use provider default model" />
+              </SelectTrigger>
               <SelectContent>
                 {models.map((model) => (
-                  <SelectItem key={model.id} value={model.id}>{model.displayName}</SelectItem>
+                  <SelectItem key={model.id} value={model.id}>
+                    {model.displayName}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+          </Field>
+          <Field label="Publish setting" error={form.formState.errors.visibility?.message}>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                {
+                  value: 'PRIVATE',
+                  label: 'Private',
+                  icon: Lock,
+                  text: 'Only you can open this course.',
+                },
+                {
+                  value: 'PUBLIC',
+                  label: 'Public',
+                  icon: Users,
+                  text: 'List it in Discovery so others can add it.',
+                },
+              ].map((option) => {
+                const Icon = option.icon;
+                const selected = form.watch('visibility') === option.value;
+
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`rounded-lg border p-3 text-left transition ${
+                      selected
+                        ? 'border-blue-400/60 bg-blue-500/10'
+                        : 'border-white/10 bg-black/20 hover:border-blue-400/30'
+                    }`}
+                    onClick={() =>
+                      form.setValue('visibility', option.value as GenerationValues['visibility'])
+                    }
+                  >
+                    <span className="flex items-center gap-2 text-sm font-medium">
+                      <Icon className="size-4 text-blue-300" />
+                      {option.label}
+                    </span>
+                    <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                      {option.text}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </Field>
           <Button className="w-full" disabled={generateRoadmap.isPending}>
             {generateRoadmap.isPending ? <Loader2 className="animate-spin" /> : <Sparkles />}
@@ -203,10 +303,12 @@ export function RoadmapGenerator() {
       <Card className="flex min-h-[34rem] flex-col justify-center p-5">
         <div className="mx-auto max-w-xl text-center">
           <Sparkles className="mx-auto size-9 text-blue-300" />
-          <h2 className="mt-4 text-3xl font-semibold">Your course will keep building in the background</h2>
+          <h2 className="mt-4 text-3xl font-semibold">
+            Your course will keep building in the background
+          </h2>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            After you start generation, Roadlyn opens the course page immediately. The page polls the job until live
-            research and AI course generation are complete.
+            After you start generation, Roadlyn opens the course page immediately. The page polls
+            the job until live research and AI course generation are complete.
           </p>
           <div className="mt-6 grid gap-3 text-left sm:grid-cols-2">
             {generationTasks.slice(0, 6).map((task) => {

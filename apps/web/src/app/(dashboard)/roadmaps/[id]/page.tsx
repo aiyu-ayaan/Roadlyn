@@ -28,13 +28,43 @@ import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useDeleteRoadmap, useRoadmap } from '@/hooks/use-roadmaps';
-import { CoursePhase, CourseProject, CourseResource, GeneratedCourse, InterviewPrep } from '@/types';
+import {
+  CoursePhase,
+  CourseProject,
+  CourseResource,
+  GeneratedCourse,
+  InterviewPrep,
+} from '@/types';
 
 type CourseItem =
-  | { type: 'summary'; title: string; detail: string; content: string[]; resource?: never }
-  | { type: 'resource'; title: string; detail: string; content?: never; resource: CourseResource }
-  | { type: 'practice'; title: string; detail: string; content: string[]; resource?: never }
-  | { type: 'quiz'; title: string; detail: string; content: string[]; resource?: never };
+  | {
+      type: 'summary';
+      title: string;
+      detail: string;
+      content: string[];
+      resource?: never;
+    }
+  | {
+      type: 'resource';
+      title: string;
+      detail: string;
+      content?: never;
+      resource: CourseResource;
+    }
+  | {
+      type: 'practice';
+      title: string;
+      detail: string;
+      content: string[];
+      resource?: never;
+    }
+  | {
+      type: 'quiz';
+      title: string;
+      detail: string;
+      content: string[];
+      resource?: never;
+    };
 
 export default function RoadmapDetailPage() {
   const params = useParams<{ id: string }>();
@@ -53,11 +83,19 @@ export default function RoadmapDetailPage() {
         resources={data.researchedResources ?? course.resources ?? []}
         notice={data.errorMessage}
         roadmapId={data.id}
-        onDelete={async () => {
-          if (!window.confirm('Delete this generated roadmap? This cannot be undone.')) return;
-          await deleteRoadmap.mutateAsync(data.id);
-          router.push('/roadmaps');
-        }}
+        visibility={data.visibility}
+        ownerName={data.ownerName ?? data.ownerEmail}
+        enrollmentCount={data.enrollmentCount}
+        onDelete={
+          data.source !== 'enrolled'
+            ? async () => {
+                if (!window.confirm('Delete this generated roadmap? This cannot be undone.'))
+                  return;
+                await deleteRoadmap.mutateAsync(data.id);
+                router.push('/roadmaps');
+              }
+            : undefined
+        }
       />
     );
   }
@@ -74,7 +112,8 @@ export default function RoadmapDetailPage() {
                 variant="outline"
                 disabled={deleteRoadmap.isPending}
                 onClick={async () => {
-                  if (!window.confirm('Delete this generated roadmap? This cannot be undone.')) return;
+                  if (!window.confirm('Delete this generated roadmap? This cannot be undone.'))
+                    return;
                   await deleteRoadmap.mutateAsync(data.id);
                   router.push('/roadmaps');
                 }}
@@ -98,7 +137,9 @@ export default function RoadmapDetailPage() {
         <Card className="p-6">
           <Badge variant="destructive">failed</Badge>
           <h2 className="mt-3 text-xl font-semibold">Generation failed</h2>
-          <p className="mt-2 text-sm text-muted-foreground">{data.errorMessage ?? 'Roadmap generation failed.'}</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {data.errorMessage ?? 'Roadmap generation failed.'}
+          </p>
           <Button className="mt-5" asChild>
             <Link href="/roadmaps/generate">Generate again</Link>
           </Button>
@@ -148,27 +189,39 @@ function GenerationStatus({
         <Progress className="mt-6" value={progress} />
         <div className="mt-5 grid gap-3 sm:grid-cols-4">
           {stages.map((stage) => (
-            <div key={stage.label} className="rounded-lg border border-white/10 bg-black/20 p-3 text-sm">
-              {stage.done ? <CheckCircle2 className="size-4 text-emerald-300" /> : <Circle className="size-4 text-muted-foreground" />}
+            <div
+              key={stage.label}
+              className="rounded-lg border border-white/10 bg-black/20 p-3 text-sm"
+            >
+              {stage.done ? (
+                <CheckCircle2 className="size-4 text-emerald-300" />
+              ) : (
+                <Circle className="size-4 text-muted-foreground" />
+              )}
               <p className="mt-2 font-medium">{stage.label}</p>
             </div>
           ))}
         </div>
         <p className="mt-5 text-sm leading-6 text-muted-foreground">
-          Roadlyn is preparing a course-player experience with current tutorials, official docs, videos, GitHub labs,
-          projects, quizzes, summaries, and interview prep.
+          Roadlyn is preparing a course-player experience with current tutorials, official docs,
+          videos, GitHub labs, projects, quizzes, summaries, and interview prep.
         </p>
       </Card>
 
       <Card className="p-5">
         <h2 className="font-semibold">Sources found</h2>
         <div className="mt-4 space-y-3">
-          {resources.length ? resources.slice(0, 6).map((resource) => (
-            <div key={resource.url} className="rounded-lg border border-white/10 bg-black/20 p-3 text-sm">
-              <span className="font-medium">{resource.title}</span>
-              <span className="mt-1 block text-xs text-muted-foreground">{resource.source}</span>
-            </div>
-          )) : (
+          {resources.length ? (
+            resources.slice(0, 6).map((resource) => (
+              <div
+                key={resource.url}
+                className="rounded-lg border border-white/10 bg-black/20 p-3 text-sm"
+              >
+                <span className="font-medium">{resource.title}</span>
+                <span className="mt-1 block text-xs text-muted-foreground">{resource.source}</span>
+              </div>
+            ))
+          ) : (
             <p className="rounded-lg border border-dashed border-white/10 bg-black/20 p-3 text-sm text-muted-foreground">
               Research sources will appear here as the background task runs.
             </p>
@@ -184,12 +237,18 @@ function CourseScreen({
   resources,
   notice,
   roadmapId,
+  visibility,
+  ownerName,
+  enrollmentCount,
   onDelete,
 }: {
   course: GeneratedCourse;
   resources: CourseResource[];
   notice?: string | null;
   roadmapId: string;
+  visibility?: string;
+  ownerName?: string | null;
+  enrollmentCount?: number;
   onDelete?: () => void;
 }) {
   const [activePhaseIndex, setActivePhaseIndex] = useState(0);
@@ -201,8 +260,12 @@ function CourseScreen({
   const activeItem = items[activeItemIndex] ?? items[0];
   const completionKey = `${roadmapId}:${activePhaseIndex}`;
   const completedSet = useMemo(() => new Set(completed), [completed]);
-  const completedCount = (course.phases ?? []).filter((_, index) => completedSet.has(`${roadmapId}:${index}`)).length;
-  const courseProgress = course.phases?.length ? Math.round((completedCount / course.phases.length) * 100) : 0;
+  const completedCount = (course.phases ?? []).filter((_, index) =>
+    completedSet.has(`${roadmapId}:${index}`)
+  ).length;
+  const courseProgress = course.phases?.length
+    ? Math.round((completedCount / course.phases.length) * 100)
+    : 0;
 
   useEffect(() => {
     const saved = window.localStorage.getItem(`roadlyn-course-progress:${roadmapId}`);
@@ -220,13 +283,18 @@ function CourseScreen({
     saveCompleted([...completed, completionKey]);
   };
   const openResource = (resource: CourseResource) => {
-    const phaseIndex = course.phases?.findIndex((p) =>
-      phaseResources(p).some((r) => normalizeResourceUrl(r.url) === normalizeResourceUrl(resource.url))
-    ) ?? -1;
+    const phaseIndex =
+      course.phases?.findIndex((p) =>
+        phaseResources(p).some(
+          (r) => normalizeResourceUrl(r.url) === normalizeResourceUrl(resource.url)
+        )
+      ) ?? -1;
     if (phaseIndex >= 0) {
       const targetItems = buildCourseItems(course.phases?.[phaseIndex]);
-      const itemIndex = targetItems.findIndex((item) =>
-        item.type === 'resource' && normalizeResourceUrl(item.resource.url) === normalizeResourceUrl(resource.url)
+      const itemIndex = targetItems.findIndex(
+        (item) =>
+          item.type === 'resource' &&
+          normalizeResourceUrl(item.resource.url) === normalizeResourceUrl(resource.url)
       );
       setActivePhaseIndex(phaseIndex);
       setActiveItemIndex(Math.max(0, itemIndex));
@@ -252,9 +320,25 @@ function CourseScreen({
             <Link href="/roadmaps">← Exit course</Link>
           </Button>
           <span className="font-semibold text-sm">{course.title}</span>
+          <Badge variant={visibility === 'PUBLIC' ? 'success' : 'secondary'}>
+            {visibility === 'PUBLIC' ? 'Public' : 'Private'}
+          </Badge>
+          {ownerName ? (
+            <span className="hidden text-xs text-muted-foreground md:inline">By {ownerName}</span>
+          ) : null}
+          {typeof enrollmentCount === 'number' ? (
+            <span className="hidden text-xs text-muted-foreground md:inline">
+              {enrollmentCount} learners added this
+            </span>
+          ) : null}
         </div>
         {onDelete ? (
-          <Button variant="ghost" size="sm" className="text-red-400 hover:text-red-300" onClick={onDelete}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-red-400 hover:text-red-300"
+            onClick={onDelete}
+          >
             <Trash2 className="size-4 mr-2" /> Delete
           </Button>
         ) : null}
@@ -272,18 +356,20 @@ function CourseScreen({
             <div className="flex h-full flex-col bg-black/40 min-h-0">
               <div className="flex items-center justify-between border-b border-white/10 bg-black/60 p-4 shrink-0">
                 <div>
-                  <p className="text-sm font-medium text-blue-300">{activePhase?.title ?? course.title}</p>
+                  <p className="text-sm font-medium text-blue-300">
+                    {activePhase?.title ?? course.title}
+                  </p>
                   <h2 className="mt-1 text-xl font-semibold">{activeItem?.title}</h2>
                 </div>
-                <Button 
-                  variant={completedSet.has(completionKey) ? 'secondary' : 'default'} 
+                <Button
+                  variant={completedSet.has(completionKey) ? 'secondary' : 'default'}
                   onClick={markPhaseComplete}
                 >
                   <CheckCircle2 className="mr-2 size-4" />
                   {completedSet.has(completionKey) ? 'Completed' : 'Mark complete'}
                 </Button>
               </div>
-              <div 
+              <div
                 className="flex-1 overflow-y-auto min-h-0"
                 onScroll={(event) => {
                   const target = event.currentTarget;
@@ -292,13 +378,13 @@ function CourseScreen({
                   }
                 }}
               >
-                <CoursePlayer
-                  course={course}
-                  phase={activePhase}
-                  item={activeItem}
-                />
+                <CoursePlayer course={course} phase={activePhase} item={activeItem} />
                 <div className="p-6 border-t border-white/10 bg-card shrink-0">
-                  <CourseOverview course={course} resources={resources} onOpenResource={openResource} />
+                  <CourseOverview
+                    course={course}
+                    resources={resources}
+                    onOpenResource={openResource}
+                  />
                 </div>
               </div>
             </div>
@@ -318,16 +404,21 @@ function CourseScreen({
                   const isActivePhase = activePhaseIndex === index;
                   const isComplete = completedSet.has(`${roadmapId}:${index}`);
                   const phaseItems = buildCourseItems(phase);
-                  
+
                   return (
-                    <div key={`${phase.title}-${index}`} className="border-b border-white/5 last:border-0">
+                    <div
+                      key={`${phase.title}-${index}`}
+                      className="border-b border-white/5 last:border-0"
+                    >
                       <button
                         type="button"
                         onClick={() => togglePhase(index)}
                         className={`flex w-full items-center justify-between p-4 text-left transition hover:bg-white/[0.04] ${isActivePhase ? 'bg-white/[0.02]' : ''}`}
                       >
                         <div className="flex gap-3">
-                          <span className={`mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${isComplete ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white/10'}`}>
+                          <span
+                            className={`mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${isComplete ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white/10'}`}
+                          >
                             {isComplete ? <CheckCircle2 className="size-3" /> : index + 1}
                           </span>
                           <div>
@@ -339,9 +430,11 @@ function CourseScreen({
                             </span>
                           </div>
                         </div>
-                        <ChevronDown className={`size-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                        <ChevronDown
+                          className={`size-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                        />
                       </button>
-                      
+
                       {isExpanded && (
                         <div className="bg-black/20 pb-2 pt-1">
                           {phaseItems.map((item, itemIdx) => {
@@ -413,8 +506,12 @@ function CoursePlayer({
         <article className="p-8">
           <div className="mx-auto max-w-4xl">
             <Badge variant="outline">{phase?.difficultyLevel ?? course.skillLevel}</Badge>
-            <h1 className="mt-4 text-4xl font-bold">{item?.title ?? phase?.title ?? course.title}</h1>
-            <p className="mt-4 text-base leading-7 text-muted-foreground">{phase?.description ?? course.overview}</p>
+            <h1 className="mt-4 text-4xl font-bold">
+              {item?.title ?? phase?.title ?? course.title}
+            </h1>
+            <p className="mt-4 text-base leading-7 text-muted-foreground">
+              {phase?.description ?? course.overview}
+            </p>
             <LessonContent item={item} course={course} phase={phase} />
           </div>
         </article>
@@ -436,7 +533,10 @@ function LessonContent({
     return (
       <div className="mt-8 space-y-4">
         {item.content.map((line) => (
-          <label key={line} className="flex cursor-pointer gap-4 rounded-xl border border-white/5 bg-white/[0.02] p-5 hover:bg-white/[0.04]">
+          <label
+            key={line}
+            className="flex cursor-pointer gap-4 rounded-xl border border-white/5 bg-white/[0.02] p-5 hover:bg-white/[0.04]"
+          >
             <input type="checkbox" className="mt-1" />
             <span className="text-base leading-7 text-muted-foreground">{line}</span>
           </label>
@@ -461,13 +561,20 @@ function LessonContent({
   return (
     <>
       <div className="mt-8 grid gap-4 sm:grid-cols-3">
-        <Metric icon={GraduationCap} label="Outcomes" value={String(course.skillOutcomes?.length ?? 0)} />
+        <Metric
+          icon={GraduationCap}
+          label="Outcomes"
+          value={String(course.skillOutcomes?.length ?? 0)}
+        />
         <Metric icon={BookOpen} label="Modules" value={String(course.phases?.length ?? 0)} />
         <Metric icon={Target} label="Milestones" value={String(course.milestones?.length ?? 0)} />
       </div>
       <div className="mt-8 space-y-4">
         {(item?.content ?? phase?.lessonNotes ?? phase?.learningObjectives ?? []).map((line) => (
-          <div key={line} className="flex gap-4 rounded-xl border border-white/5 bg-white/[0.02] p-5">
+          <div
+            key={line}
+            className="flex gap-4 rounded-xl border border-white/5 bg-white/[0.02] p-5"
+          >
             <Sparkles className="mt-1 size-5 shrink-0 text-blue-400/50" />
             <p className="text-base leading-7 text-muted-foreground">{line}</p>
           </div>
@@ -524,7 +631,13 @@ function ResourcePreview({ resource }: { resource: CourseResource }) {
   );
 }
 
-function ResourcePreviewFallback({ resource, sourceUrl }: { resource: CourseResource; sourceUrl: string | null }) {
+function ResourcePreviewFallback({
+  resource,
+  sourceUrl,
+}: {
+  resource: CourseResource;
+  sourceUrl: string | null;
+}) {
   return (
     <div className="grid min-h-[560px] place-items-center bg-card px-6 py-12">
       <div className="max-w-2xl rounded-lg border border-white/10 bg-white/[0.035] p-6">
@@ -572,7 +685,13 @@ function canEmbedResource(resource: CourseResource, url: string) {
   }
 }
 
-function ResourceStudyNotes({ resource, phase }: { resource: CourseResource; phase?: CoursePhase }) {
+function ResourceStudyNotes({
+  resource,
+  phase,
+}: {
+  resource: CourseResource;
+  phase?: CoursePhase;
+}) {
   const objectives = phase?.learningObjectives?.slice(0, 4) ?? [];
   const tasks = [...(phase?.exercises ?? []), ...(phase?.miniProjects ?? [])].slice(0, 4);
 
@@ -584,7 +703,13 @@ function ResourceStudyNotes({ resource, phase }: { resource: CourseResource; pha
           {resource.summary ?? resource.freshnessRelevance}
         </p>
         <div className="mt-5 space-y-3">
-          {(objectives.length ? objectives : ['Read the resource with the current module goal in mind.', 'Capture the decisions, APIs, commands, and examples you can reuse.']).map((item) => (
+          {(objectives.length
+            ? objectives
+            : [
+                'Read the resource with the current module goal in mind.',
+                'Capture the decisions, APIs, commands, and examples you can reuse.',
+              ]
+          ).map((item) => (
             <p key={item} className="flex gap-2 text-sm leading-6 text-muted-foreground">
               <CheckCircle2 className="mt-1 size-4 shrink-0 text-emerald-300" />
               {item}
@@ -596,8 +721,17 @@ function ResourceStudyNotes({ resource, phase }: { resource: CourseResource; pha
       <div className="rounded-xl border border-white/10 bg-white/[0.035] p-5">
         <h4 className="text-lg font-semibold">Do next</h4>
         <div className="mt-3 space-y-3">
-          {(tasks.length ? tasks : ['Write a short summary in your own words.', 'Create a small example that proves you understood the resource.']).map((item) => (
-            <label key={item} className="flex cursor-pointer gap-2 rounded-lg p-2 text-sm leading-6 text-muted-foreground hover:bg-white/[0.04]">
+          {(tasks.length
+            ? tasks
+            : [
+                'Write a short summary in your own words.',
+                'Create a small example that proves you understood the resource.',
+              ]
+          ).map((item) => (
+            <label
+              key={item}
+              className="flex cursor-pointer gap-2 rounded-lg p-2 text-sm leading-6 text-muted-foreground hover:bg-white/[0.04]"
+            >
               <input type="checkbox" className="mt-1" />
               <span>{item}</span>
             </label>
@@ -642,7 +776,11 @@ function CourseOverview({
       </TabsContent>
       <TabsContent value="resources" className="grid gap-4 md:grid-cols-2">
         {resources.map((resource) => (
-          <ResourceButton key={resource.url} resource={resource} onOpen={() => onOpenResource(resource)} />
+          <ResourceButton
+            key={resource.url}
+            resource={resource}
+            onOpen={() => onOpenResource(resource)}
+          />
         ))}
       </TabsContent>
       <TabsContent value="interview" className="space-y-4">
@@ -669,7 +807,9 @@ function PhaseModule({
     <Card id={`module-${index}`} className="p-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <Badge variant="outline">Module {index + 1} · {phase.difficultyLevel}</Badge>
+          <Badge variant="outline">
+            Module {index + 1} · {phase.difficultyLevel}
+          </Badge>
           <h3 className="mt-3 text-xl font-semibold">{phase.title}</h3>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">{phase.description}</p>
         </div>
@@ -679,12 +819,22 @@ function PhaseModule({
       <div className="mt-5 grid gap-4 lg:grid-cols-3">
         <DetailList title="Objectives" items={phase.learningObjectives ?? []} />
         <DetailList title="Lesson notes" items={phase.lessonNotes ?? []} />
-        <DetailList title="Recap" items={[phase.recap ?? 'Complete the resources, explain the ideas, and ship a small proof of work.']} />
+        <DetailList
+          title="Recap"
+          items={[
+            phase.recap ??
+              'Complete the resources, explain the ideas, and ship a small proof of work.',
+          ]}
+        />
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         {resources.slice(0, 6).map((resource) => (
-          <ResourceButton key={resource.url} resource={resource} onOpen={() => onOpenResource(resource)} />
+          <ResourceButton
+            key={resource.url}
+            resource={resource}
+            onOpen={() => onOpenResource(resource)}
+          />
         ))}
       </div>
     </Card>
@@ -717,7 +867,10 @@ function InterviewCard({ item }: { item: InterviewPrep }) {
       <p className="mt-3 text-sm text-muted-foreground">{item.portfolioSuggestion}</p>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         {item.practicalQuestions?.map((question) => (
-          <div key={question} className="rounded-lg border border-white/10 bg-black/20 p-3 text-sm text-muted-foreground">
+          <div
+            key={question}
+            className="rounded-lg border border-white/10 bg-black/20 p-3 text-sm text-muted-foreground"
+          >
             {question}
           </div>
         ))}
@@ -731,12 +884,14 @@ function DetailList({ title, items }: { title: string; items: string[] }) {
     <div className="rounded-lg border border-white/10 bg-black/20 p-4">
       <h4 className="font-medium">{title}</h4>
       <div className="mt-3 space-y-2">
-        {items.length ? items.slice(0, 5).map((item) => (
-          <p key={item} className="flex gap-2 text-sm text-muted-foreground">
-            <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-300" />
-            {item}
-          </p>
-        )) : (
+        {items.length ? (
+          items.slice(0, 5).map((item) => (
+            <p key={item} className="flex gap-2 text-sm text-muted-foreground">
+              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-300" />
+              {item}
+            </p>
+          ))
+        ) : (
           <p className="text-sm text-muted-foreground">No {title.toLowerCase()} generated.</p>
         )}
       </div>
@@ -755,19 +910,30 @@ function ResourceButton({ resource, onOpen }: { resource: CourseResource; onOpen
         <span>
           <span className="font-medium">{resource.title}</span>
           <span className="mt-1 block text-xs text-muted-foreground">
-            {resource.source}{resource.stars ? ` · ${resource.stars.toLocaleString()} stars` : ''}
+            {resource.source}
+            {resource.stars ? ` · ${resource.stars.toLocaleString()} stars` : ''}
           </span>
         </span>
         <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
       </span>
       {resource.summary ? (
-        <span className="mt-2 block text-xs leading-5 text-muted-foreground">{resource.summary}</span>
+        <span className="mt-2 block text-xs leading-5 text-muted-foreground">
+          {resource.summary}
+        </span>
       ) : null}
     </button>
   );
 }
 
-function Metric({ icon: Icon, label, value }: { icon: typeof GraduationCap; label: string; value: string }) {
+function Metric({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof GraduationCap;
+  label: string;
+  value: string;
+}) {
   return (
     <div className="rounded-lg border border-white/10 bg-black/20 p-4">
       <Icon className="size-4 text-blue-300" />
@@ -804,23 +970,29 @@ function buildCourseItems(phase?: CoursePhase): CourseItem[] {
         ...(phase.learningObjectives ?? []).map((objective) => `Goal: ${objective}`),
       ],
     },
-    ...resources.map((resource): CourseItem => ({
-      type: 'resource',
-      title: resource.title,
-      detail: `${resource.source} · ${resource.freshnessRelevance}`,
-      resource,
-    })),
+    ...resources.map(
+      (resource): CourseItem => ({
+        type: 'resource',
+        title: resource.title,
+        detail: `${resource.source} · ${resource.freshnessRelevance}`,
+        resource,
+      })
+    ),
     {
       type: 'practice',
       title: 'Practice tasks',
       detail: `${practice.length} exercises and mini-projects`,
-      content: practice.length ? practice : ['Build a small demo, document your steps, and compare it with the linked resources.'],
+      content: practice.length
+        ? practice
+        : ['Build a small demo, document your steps, and compare it with the linked resources.'],
     },
     {
       type: 'quiz',
       title: 'Knowledge check',
       detail: `${quizLines.length} self-check questions`,
-      content: quizLines.length ? quizLines : ['Explain the module in your own words and list one mistake you can now avoid.'],
+      content: quizLines.length
+        ? quizLines
+        : ['Explain the module in your own words and list one mistake you can now avoid.'],
     },
   ];
 }
@@ -902,7 +1074,7 @@ function getYouTubeVideoId(url: string) {
 
 function readYouTubePathId(pathParts: string[], segment: string) {
   const index = pathParts.indexOf(segment);
-  return index >= 0 ? pathParts[index + 1] ?? null : null;
+  return index >= 0 ? (pathParts[index + 1] ?? null) : null;
 }
 
 function normalizeExternalUrl(url: string) {

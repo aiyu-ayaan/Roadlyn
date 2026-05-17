@@ -44,3 +44,34 @@ export function useDeleteRoadmap() {
     },
   });
 }
+
+export function usePublicRoadmaps(query?: string) {
+  return useQuery({
+    queryKey: queryKeys.publicRoadmaps(query),
+    queryFn: () => roadmapService.discoverPublicRoadmaps(query),
+  });
+}
+
+export function useEnrollRoadmap() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => roadmapService.enrollRoadmap(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.roadmaps });
+      void queryClient.invalidateQueries({ queryKey: ['roadmaps', 'public'] });
+    },
+  });
+}
+
+export function useUnenrollRoadmap() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => roadmapService.unenrollRoadmap(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.roadmaps });
+      void queryClient.invalidateQueries({ queryKey: ['roadmaps', 'public'] });
+    },
+  });
+}

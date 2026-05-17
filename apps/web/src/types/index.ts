@@ -29,6 +29,12 @@ export interface AuthUser {
 
 export interface AdminUser extends AuthUser {
   role: 'USER' | 'ADMIN';
+  isDemo: boolean;
+  maxGenerations?: number | null;
+  generationCooldownSeconds: number;
+  unlimitedGenerations: boolean;
+  noGenerationCooldown: boolean;
+  lastGenerationAt?: string | null;
   createdAt: string;
   updatedAt: string;
   _count: {
@@ -81,7 +87,12 @@ export interface AIProvider {
   createdAt: string;
   updatedAt: string;
   models?: AIModel[];
-  apiKeys?: { id: string; keyName: string; providerType: AIProviderType; isDefault: boolean }[];
+  apiKeys?: {
+    id: string;
+    keyName: string;
+    providerType: AIProviderType;
+    isDefault: boolean;
+  }[];
 }
 
 export interface AIModel {
@@ -214,6 +225,7 @@ export interface RoadmapGenerateRequest {
   providerId?: string;
   modelId?: string;
   useUserDefaults?: boolean;
+  visibility?: 'PRIVATE' | 'PUBLIC';
 }
 
 export interface RoadmapGenerateResult {
@@ -238,6 +250,12 @@ export interface RoadmapDetail {
   researchedResources?: CourseResource[] | null;
   providerId?: string | null;
   modelId?: string | null;
+  visibility?: 'PRIVATE' | 'PUBLIC' | string;
+  ownerName?: string | null;
+  ownerEmail?: string | null;
+  enrollmentCount?: number;
+  isEnrolled?: boolean;
+  source?: 'generated' | 'enrolled';
   errorMessage?: string | null;
   completedAt?: string | null;
   createdAt: string;
