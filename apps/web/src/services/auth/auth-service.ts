@@ -1,11 +1,6 @@
 import { apiClient } from '@/services/api';
 import { appConfig } from '@/config/app';
-import {
-  ApiResponse,
-  AuthUser,
-  OAuthClientResponse,
-  TokenResponse,
-} from '@/types';
+import { ApiResponse, AuthUser, OAuthClientResponse, TokenResponse } from '@/types';
 
 export interface LoginInput {
   clientId: string;
@@ -29,7 +24,7 @@ export const authService = {
   async createOAuthClient(input: RegisterClientInput) {
     const { data } = await apiClient.post<ApiResponse<OAuthClientResponse> & { warning?: string }>(
       '/api/auth/oauth-clients',
-      input,
+      input
     );
 
     return data;
@@ -44,6 +39,10 @@ export const authService = {
 
     return data;
   },
+  async demoLogin() {
+    const { data } = await apiClient.post<ApiResponse<TokenResponse>>('/api/auth/demo');
+    return data.data;
+  },
   async me() {
     const { data } = await apiClient.get<ApiResponse<AuthUser>>('/api/auth/me');
     return data.data;
@@ -51,7 +50,7 @@ export const authService = {
   async forgotPassword(email: string) {
     const { data } = await apiClient.post<ApiResponse<{ accepted: boolean }>>(
       '/api/auth/forgot-password',
-      { email },
+      { email }
     );
 
     return data.data;
@@ -59,7 +58,7 @@ export const authService = {
   async resetPassword(input: { token: string; password: string }) {
     const { data } = await apiClient.post<ApiResponse<{ accepted: boolean }>>(
       '/api/auth/reset-password',
-      input,
+      input
     );
 
     return data.data;
