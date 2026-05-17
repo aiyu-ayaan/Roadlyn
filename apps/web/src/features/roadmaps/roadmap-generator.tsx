@@ -14,7 +14,7 @@ import {
   Trophy,
   Users,
 } from 'lucide-react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
 import { z } from 'zod';
@@ -31,7 +31,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useProviders } from '@/hooks/use-ai';
-import { useGenerateRoadmap } from '@/hooks/use-roadmaps';
+import { useEnrollRoadmap, useGenerateRoadmap } from '@/hooks/use-roadmaps';
+import { RoadmapGenerateRequest, RoadmapSimilarityResult } from '@/types';
 
 const generationSchema = z.object({
   topic: z.string().min(2),
@@ -62,6 +63,11 @@ export function RoadmapGenerator() {
   const router = useRouter();
   const providers = useProviders();
   const generateRoadmap = useGenerateRoadmap();
+  const enrollRoadmap = useEnrollRoadmap();
+  const [similarityPrompt, setSimilarityPrompt] = useState<{
+    values: GenerationValues;
+    result: RoadmapSimilarityResult;
+  } | null>(null);
   const form = useForm<GenerationValues>({
     resolver: zodResolver(generationSchema),
     defaultValues: {
@@ -110,13 +116,17 @@ export function RoadmapGenerator() {
         <form
           className="space-y-4"
           onSubmit={form.handleSubmit(async (values) => {
-            const result = await generateRoadmap.mutateAsync({
-              ...values,
-              providerId: values.providerId || undefined,
-              modelId: values.modelId || undefined,
-              useUserDefaults: !values.providerId || !values.modelId,
-            });
-            router.push(`/roadmaps/${result.roadmapId}`);
+            const payload = toGeneratePayload(values);
+            const result = await generateRoadmap.mutateAsync(payload);
+
+            if ('roadmapId' in result && result.roadmapId) {
+              router.push(`/roadmaps/${result.roadmapId}`);
+              return;
+            }
+
+            if (!result.shouldGenerateNewRoadmap && result.existingRoadmaps.length > 0) {
+              setSimilarityPrompt({ values, result });
+            }
           })}
         >
           <Field label="Topic" error={form.formState.errors.topic?.message}>
@@ -293,11 +303,87 @@ export function RoadmapGenerator() {
               })}
             </div>
           </Field>
-          <Button className="w-full" disabled={generateRoadmap.isPending}>
+          <Button className="w-full" disabled={generateRoadmap.isPending || enrollRoadmap.isPending}>
             {generateRoadmap.isPending ? <Loader2 className="animate-spin" /> : <Sparkles />}
             Start background generation
           </Button>
         </form>
+
+        {similarityPrompt ? (
+          <div className="mt-6 space-y-4 rounded-xl border border-amber-400/30 bg-amber-500/10 p-4">
+            <div>
+              <p className="text-sm font-medium text-amber-100">
+                Similar public courses already exist
+              </p>
+              <p className="mt-1 text-xs leading-5 text-amber-100/80">
+                Reuse an existing roadmap to save tokens and generation time, or generate a new
+                course anyway.
+              </p>
+            </div>
+            <div className="space-y-2">
+                {similarityPrompt.result.existingRoadmaps.map((match) => (
+                  <div
+                    key={match.id}
+                    className="flex flex-col gap-3 rounded-lg border border-white/10 bg-black/30 p-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                      <div>
+                        <p className="text-sm font-medium">{match.title}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {Math.round(match.similarityScore * 100)}% match
+                          {typeof match.enrollmentCount === 'number'
+                            ? ` · ${match.enrollmentCount} enrolled`
+                            : ''}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={enrollRoadmap.isPending}
+                        onClick={async () => {
+                          await enrollRoadmap.mutateAsync(match.id);
+                          router.push(`/roadmaps/${match.id}`);
+                        }}
+                      >
+                        Use this roadmap
+                      </Button>
+                  </div>
+                ))}
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => setSimilarityPrompt(null)}
+              >
+                Back to form
+              </Button>
+              <Button
+                type="button"
+                className="flex-1"
+                disabled={generateRoadmap.isPending}
+                onClick={async () => {
+                  const result = await generateRoadmap.mutateAsync({
+                    ...toGeneratePayload(similarityPrompt.values),
+                    forceRegenerate: true,
+                  });
+
+                  if ('roadmapId' in result && result.roadmapId) {
+                    setSimilarityPrompt(null);
+                    router.push(`/roadmaps/${result.roadmapId}`);
+                  }
+                }}
+              >
+                {generateRoadmap.isPending ? (
+                  <Loader2 className="animate-spin" />
+                ) : (
+                  <Sparkles />
+                )}
+                Generate new anyway
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </Card>
 
       <Card className="flex min-h-[34rem] flex-col justify-center p-5">
@@ -385,3 +471,12 @@ const generationTasks = [
     icon: Trophy,
   },
 ] as const;
+
+function toGeneratePayload(values: GenerationValues): RoadmapGenerateRequest {
+  return {
+    ...values,
+    providerId: values.providerId || undefined,
+    modelId: values.modelId || undefined,
+    useUserDefaults: !values.providerId || !values.modelId,
+  };
+}

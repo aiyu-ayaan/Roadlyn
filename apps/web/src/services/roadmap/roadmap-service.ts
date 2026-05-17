@@ -5,6 +5,7 @@ import {
   RoadmapDetail,
   RoadmapGenerateRequest,
   RoadmapGenerateResult,
+  RoadmapSimilarityResult,
   RoadmapStatus,
 } from '@/types';
 
@@ -33,6 +34,13 @@ export const roadmapService = {
   },
   async getRoadmap(id: string) {
     const { data } = await apiClient.get<ApiResponse<RoadmapDetail>>(`/api/roadmaps/${id}`);
+    return data.data;
+  },
+  async checkSimilar(input: Pick<RoadmapGenerateRequest, 'topic' | 'experienceLevel' | 'goal' | 'weeklyHours'>) {
+    const { data } = await apiClient.post<ApiResponse<RoadmapSimilarityResult>>(
+      '/api/roadmaps/check-similar',
+      input
+    );
     return data.data;
   },
   async generate(input: RoadmapGenerateRequest) {

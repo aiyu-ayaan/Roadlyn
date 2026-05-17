@@ -204,6 +204,33 @@ export interface PaginatedResponse<T> {
   };
 }
 
+export interface SimilarRoadmapMatch {
+  id: string;
+  title: string;
+  slug?: string | null;
+  topic?: string | null;
+  similarityScore: number;
+  enrollmentCount?: number;
+}
+
+export interface RoadmapSearchMetadata {
+  title: string;
+  slug: string;
+  normalizedTitle: string;
+  searchableKeywords: string[];
+  semanticTags: string[];
+  searchPhrases: string[];
+  searchVector: string;
+  generationHash: string;
+}
+
+export interface RoadmapSimilarityResult {
+  existingRoadmaps: SimilarRoadmapMatch[];
+  shouldGenerateNewRoadmap: boolean;
+  metadata?: RoadmapSearchMetadata;
+  similarityThreshold?: number;
+}
+
 export interface RoadmapGenerateRequest {
   topic: string;
   experienceLevel?: string;
@@ -226,13 +253,19 @@ export interface RoadmapGenerateRequest {
   modelId?: string;
   useUserDefaults?: boolean;
   visibility?: 'PRIVATE' | 'PUBLIC';
+  forceRegenerate?: boolean;
 }
 
-export interface RoadmapGenerateResult {
-  roadmapId: string;
-  status: RoadmapStatus;
-  roadmap: RoadmapDetail;
-}
+export type RoadmapGenerateResult =
+  | {
+      roadmapId: string;
+      status: RoadmapStatus;
+      roadmap: RoadmapDetail;
+      shouldGenerateNewRoadmap: true;
+    }
+  | ({
+      shouldGenerateNewRoadmap: false;
+    } & RoadmapSimilarityResult);
 
 export type RoadmapStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | string;
 

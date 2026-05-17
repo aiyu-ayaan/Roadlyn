@@ -22,13 +22,22 @@ export function useRoadmap(id?: string) {
   });
 }
 
+export function useCheckSimilarRoadmaps() {
+  return useMutation({
+    mutationFn: (input: Pick<RoadmapGenerateRequest, 'topic' | 'experienceLevel' | 'goal' | 'weeklyHours'>) =>
+      roadmapService.checkSimilar(input),
+  });
+}
+
 export function useGenerateRoadmap() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (input: RoadmapGenerateRequest) => roadmapService.generate(input),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.roadmaps });
+    onSuccess: (result) => {
+      if ('roadmapId' in result) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.roadmaps });
+      }
     },
   });
 }
