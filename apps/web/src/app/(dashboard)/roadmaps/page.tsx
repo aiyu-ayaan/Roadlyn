@@ -7,13 +7,20 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { useDeleteRoadmap, useRoadmaps, useUnenrollRoadmap } from '@/hooks/use-roadmaps';
+import {
+  useDeleteRoadmap,
+  useRoadmaps,
+  useUnenrollRoadmap,
+  useUpdateRoadmapVisibility,
+} from '@/hooks/use-roadmaps';
 import { RoadmapSummary } from '@/services/roadmap/roadmap-service';
+import { Switch } from '@/components/ui/switch';
 
 export default function RoadmapsPage() {
   const roadmaps = useRoadmaps();
   const deleteRoadmap = useDeleteRoadmap();
   const unenrollRoadmap = useUnenrollRoadmap();
+  const updateVisibility = useUpdateRoadmapVisibility();
   const generatedRoadmaps = (roadmaps.data ?? []).filter(
     (roadmap) => roadmap.source !== 'enrolled'
   );
@@ -47,6 +54,12 @@ export default function RoadmapsPage() {
             empty="You have not generated a roadmap yet."
             onDelete={(id) => deleteRoadmap.mutateAsync(id)}
             isMutating={deleteRoadmap.isPending}
+            onVisibilityChange={(id, visibility) =>
+              updateVisibility.mutateAsync({ id, visibility })
+            }
+            visibilityMutatingId={
+              updateVisibility.isPending ? updateVisibility.variables?.id : undefined
+            }
           />
           <RoadmapGroup
             title="Public roadmaps I added"
@@ -88,6 +101,8 @@ function RoadmapGroup({
   empty,
   onDelete,
   isMutating,
+  onVisibilityChange,
+  visibilityMutatingId,
   deleteLabel = 'Delete',
 }: {
   title: string;
@@ -96,6 +111,8 @@ function RoadmapGroup({
   empty: string;
   onDelete: (id: string) => Promise<unknown>;
   isMutating: boolean;
+  onVisibilityChange?: (id: string, visibility: 'PRIVATE' | 'PUBLIC') => Promise<unknown>;
+  visibilityMutatingId?: string;
   deleteLabel?: string;
 }) {
   return (
@@ -113,10 +130,19 @@ function RoadmapGroup({
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="mb-3 flex flex-wrap gap-2">
-                    <Badge variant={roadmap.visibility === 'PUBLIC' ? 'success' : 'secondary'}>
-                      {roadmap.visibility === 'PUBLIC' ? 'Public' : 'Private'}
-                    </Badge>
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    {roadmap.source !== 'enrolled' && onVisibilityChange ? (
+                      <RoadmapVisibilityToggle
+                        roadmap={roadmap}
+                        disabled={Boolean(visibilityMutatingId && visibilityMutatingId !== roadmap.id)}
+                        isSaving={visibilityMutatingId === roadmap.id}
+                        onChange={onVisibilityChange}
+                      />
+                    ) : (
+                      <Badge variant={roadmap.visibility === 'PUBLIC' ? 'success' : 'secondary'}>
+                        {roadmap.visibility === 'PUBLIC' ? 'Public' : 'Private'}
+                      </Badge>
+                    )}
                     {roadmap.source === 'enrolled' ? <Badge variant="outline">Saved</Badge> : null}
                   </div>
                   <h3 className="line-clamp-2 text-lg font-semibold">{roadmap.title}</h3>
@@ -167,5 +193,38 @@ function RoadmapGroup({
         <Card className="p-5 text-sm text-muted-foreground">{empty}</Card>
       )}
     </section>
+  );
+}
+
+function RoadmapVisibilityToggle({
+  roadmap,
+  disabled,
+  isSaving,
+  onChange,
+}: {
+  roadmap: RoadmapSummary;
+  disabled?: boolean;
+  isSaving?: boolean;
+  onChange: (id: string, visibility: 'PRIVATE' | 'PUBLIC') => Promise<unknown>;
+}) {
+  const isPublic = roadmap.visibility === 'PUBLIC';
+  const canPublish = roadmap.status === 'COMPLETED';
+
+  return (
+    <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs">
+      <Switch
+        checked={isPublic}
+        disabled={disabled || isSaving || !canPublish}
+        onCheckedChange={(checked) =>
+          void onChange(roadmap.id, checked ? 'PUBLIC' : 'PRIVATE')
+        }
+      />
+      <span className="font-medium text-foreground">
+        {isSaving ? 'Saving…' : isPublic ? 'Public' : 'Private'}
+      </span>
+      {!canPublish ? (
+        <span className="text-muted-foreground">(when complete)</span>
+      ) : null}
+    </label>
   );
 }

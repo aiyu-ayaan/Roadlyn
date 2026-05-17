@@ -268,6 +268,7 @@ export type RoadmapGenerateResult =
     } & RoadmapSimilarityResult);
 
 export type RoadmapStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | string;
+export type RoadmapVisibility = 'PRIVATE' | 'PUBLIC';
 
 export interface RoadmapDetail {
   id: string;

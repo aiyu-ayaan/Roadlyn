@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/hooks/queries';
-import { roadmapService } from '@/services/roadmap/roadmap-service';
+import { roadmapService, RoadmapSummary } from '@/services/roadmap/roadmap-service';
 import { RoadmapGenerateRequest } from '@/types';
 
 export function useRoadmaps() {
@@ -50,6 +50,23 @@ export function useDeleteRoadmap() {
     onSuccess: (_result, id) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.roadmaps });
       void queryClient.removeQueries({ queryKey: queryKeys.roadmap(id) });
+    },
+  });
+}
+
+export function useUpdateRoadmapVisibility() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, visibility }: { id: string; visibility: 'PRIVATE' | 'PUBLIC' }) =>
+      roadmapService.updateRoadmapVisibility(id, visibility),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<RoadmapSummary[] | undefined>(queryKeys.roadmaps, (current) =>
+        current?.map((roadmap) => (roadmap.id === updated.id ? { ...roadmap, ...updated } : roadmap))
+      );
+      void queryClient.invalidateQueries({ queryKey: queryKeys.roadmaps });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.roadmap(updated.id) });
+      void queryClient.invalidateQueries({ queryKey: ['roadmaps', 'public'] });
     },
   });
 }

@@ -54,6 +54,13 @@ export const roadmapService = {
     const { data } = await apiClient.delete<ApiResponse<{ id: string }>>(`/api/roadmaps/${id}`);
     return data.data;
   },
+  async updateRoadmapVisibility(id: string, visibility: 'PRIVATE' | 'PUBLIC') {
+    const { data } = await apiClient.patch<ApiResponse<RoadmapSummary>>(
+      `/api/roadmaps/${id}/visibility`,
+      { visibility }
+    );
+    return data.data;
+  },
   async discoverPublicRoadmaps(query?: string) {
     const { data } = await apiClient.get<ApiResponse<RoadmapSummary[]>>(
       '/api/roadmaps/discover/public',
