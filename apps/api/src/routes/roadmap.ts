@@ -50,6 +50,10 @@ const generateSchema = similarityInputSchema.extend({
 
 const checkSimilarSchema = similarityInputSchema;
 
+const visibilityUpdateSchema = z.object({
+  visibility: z.enum(['PRIVATE', 'PUBLIC']),
+});
+
 type GenerateInput = z.infer<typeof generateSchema>;
 type AIGenerateResult = Awaited<ReturnType<AIGatewayService['generateText']>>;
 type ResourceKind = ResearchResource['kind'];
@@ -305,6 +309,130 @@ export async function roadmapRoutes(fastify: FastifyInstance) {
       }
 
       return { success: true, data: { id: params.id } };
+    }
+  );
+
+  fastify.patch(
+    '/roadmaps/:id/visibility',
+    {
+      preHandler: requireScope('ai:write'),
+      schema: {
+        tags: ['Roadmaps'],
+        summary: 'Update roadmap visibility (owner only)',
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async (request) => {
+      if (!request.auth?.userId) {
+        throw new ApiError(
+          403,
+          'USER_SESSION_REQUIRED',
+          'Updating roadmap visibility requires a user session'
+        );
+      }
+
+      const params = z.object({ id: z.string().min(1) }).parse(request.params);
+      const input = visibilityUpdateSchema.parse(request.body);
+
+      const [roadmap] = await fastify.db.$queryRawUnsafe<
+        Array<{
+          id: string;
+          userId: string;
+          title: string;
+          topic: string | null;
+          experienceLevel: string | null;
+          goal: string | null;
+          weeklyHours: number | null;
+          slug: string | null;
+          status: string;
+        }>
+      >(
+        `SELECT "id", "userId", "title", "topic", "experienceLevel", "goal", "weeklyHours", "slug", "status"
+         FROM "Roadmap"
+         WHERE "id" = $1
+         LIMIT 1`,
+        params.id
+      );
+
+      if (!roadmap || roadmap.userId !== request.auth.userId) {
+        throw new ApiError(404, 'ROADMAP_NOT_FOUND', 'Roadmap not found');
+      }
+
+      if (roadmap.status !== 'COMPLETED') {
+        throw new ApiError(
+          400,
+          'ROADMAP_NOT_READY',
+          'Only completed roadmaps can be published or made private'
+        );
+      }
+
+      if (input.visibility === 'PUBLIC' && !roadmap.slug) {
+        const metadata = buildHeuristicMetadata({
+          topic: roadmap.topic ?? roadmap.title,
+          experienceLevel: roadmap.experienceLevel ?? undefined,
+          goal: roadmap.goal ?? undefined,
+          weeklyHours: roadmap.weeklyHours ?? undefined,
+        });
+        const searchVector = buildSearchVector({
+          title: roadmap.title,
+          topic: roadmap.topic ?? roadmap.title,
+          keywords: metadata.searchableKeywords,
+          tags: metadata.semanticTags,
+          phrases: metadata.searchPhrases,
+        });
+        const embedding = await embeddingService.embedSearchText(searchVector);
+
+        await fastify.db.$executeRawUnsafe(
+          `UPDATE "Roadmap"
+           SET "visibility" = 'PUBLIC',
+               "slug" = $2,
+               "normalizedTitle" = $3,
+               "searchableKeywords" = $4::text[],
+               "semanticTags" = $5::text[],
+               "searchVector" = $6,
+               "embedding" = $7::double precision[],
+               "generationHash" = $8,
+               "updatedAt" = NOW()
+           WHERE "id" = $1`,
+          roadmap.id,
+          metadata.slug,
+          metadata.normalizedTitle,
+          metadata.searchableKeywords,
+          metadata.semanticTags,
+          searchVector,
+          embedding,
+          metadata.generationHash
+        );
+      } else {
+        await fastify.db.roadmap.update({
+          where: { id: roadmap.id },
+          data: {
+            visibility: input.visibility,
+            slug: input.visibility === 'PUBLIC' ? roadmap.slug : null,
+          },
+        });
+      }
+
+      const [updated] = await fastify.db.$queryRawUnsafe<RoadmapRecord[]>(
+        `SELECT
+         r."id", r."title", r."topic", r."status", r."progress", r."visibility",
+         r."errorMessage", r."completedAt", r."createdAt", r."updatedAt",
+         COALESCE(enrollment_counts."count", 0)::int AS "enrollmentCount",
+         'generated' AS "source",
+         u."name" AS "ownerName",
+         u."email" AS "ownerEmail"
+       FROM "Roadmap" r
+       JOIN "User" u ON u."id" = r."userId"
+       LEFT JOIN (
+         SELECT "roadmapId", COUNT(*) AS "count"
+         FROM "RoadmapEnrollment"
+         GROUP BY "roadmapId"
+       ) enrollment_counts ON enrollment_counts."roadmapId" = r."id"
+       WHERE r."id" = $1`,
+        roadmap.id
+      );
+
+      return { success: true, data: updated };
     }
   );
 
