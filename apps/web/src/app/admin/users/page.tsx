@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Loader2, ShieldCheck, Users } from 'lucide-react';
 import { AdminRoute } from '@/components/admin/admin-shell';
 import { PageHeader } from '@/components/layout/page-header';
@@ -24,6 +24,7 @@ export default function AdminUsersPage() {
 function AdminUsersContent() {
   const users = useAdminUsers();
   const updatePolicy = useUpdateUserGenerationPolicy();
+  const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const adminCount = users.data?.filter((user) => user.role === 'ADMIN').length ?? 0;
 
   return (
@@ -76,8 +77,17 @@ function AdminUsersContent() {
               <UserPolicyRow
                 key={workspaceUser.id}
                 user={workspaceUser}
-                isSaving={updatePolicy.isPending}
-                onSave={(input) => updatePolicy.mutateAsync({ id: workspaceUser.id, ...input })}
+                isSaving={savingUserId === workspaceUser.id}
+                onSave={async (input) => {
+                  setSavingUserId(workspaceUser.id);
+                  try {
+                    await updatePolicy.mutateAsync({ id: workspaceUser.id, ...input });
+                  } finally {
+                    setSavingUserId((current) =>
+                      current === workspaceUser.id ? null : current
+                    );
+                  }
+                }}
               />
             ))}
           </div>
@@ -107,6 +117,61 @@ function UserPolicyRow({
   );
   const [unlimitedGenerations, setUnlimitedGenerations] = useState(user.unlimitedGenerations);
   const [noGenerationCooldown, setNoGenerationCooldown] = useState(user.noGenerationCooldown);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMaxGenerations(user.maxGenerations?.toString() ?? '');
+    setCooldownMinutes(
+      user.generationCooldownSeconds
+        ? String(Math.round(user.generationCooldownSeconds / 60))
+        : '0'
+    );
+    setUnlimitedGenerations(user.unlimitedGenerations);
+    setNoGenerationCooldown(user.noGenerationCooldown);
+    setSaveError(null);
+  }, [
+    user.id,
+    user.maxGenerations,
+    user.generationCooldownSeconds,
+    user.unlimitedGenerations,
+    user.noGenerationCooldown,
+  ]);
+
+  const handleSave = async () => {
+    setSaveError(null);
+
+    if (!unlimitedGenerations && maxGenerations.trim() !== '') {
+      const parsedMax = Number(maxGenerations);
+      if (!Number.isFinite(parsedMax) || parsedMax < 0) {
+        setSaveError('Max generations must be a non-negative number.');
+        return;
+      }
+    }
+
+    if (!noGenerationCooldown) {
+      const parsedCooldown = Number(cooldownMinutes || 0);
+      if (!Number.isFinite(parsedCooldown) || parsedCooldown < 0) {
+        setSaveError('Cooldown minutes must be a non-negative number.');
+        return;
+      }
+    }
+
+    try {
+      await onSave({
+        maxGenerations:
+          unlimitedGenerations || maxGenerations.trim() === ''
+            ? null
+            : Number(maxGenerations),
+        generationCooldownSeconds: noGenerationCooldown
+          ? 0
+          : Number(cooldownMinutes || 0) * 60,
+        unlimitedGenerations,
+        noGenerationCooldown,
+      });
+    } catch {
+      setSaveError('Could not save generation policy. Try again.');
+    }
+  };
 
   return (
     <div className="grid gap-4 border-b border-border px-4 py-4 last:border-b-0 xl:grid-cols-[1.2fr_0.35fr_0.7fr_1.45fr]">
@@ -128,7 +193,7 @@ function UserPolicyRow({
             className="mt-1"
             type="number"
             min={0}
-            disabled={unlimitedGenerations}
+            disabled={unlimitedGenerations || isSaving}
             value={maxGenerations}
             placeholder="Unlimited"
             onChange={(event) => setMaxGenerations(event.target.value)}
@@ -140,7 +205,7 @@ function UserPolicyRow({
             className="mt-1"
             type="number"
             min={0}
-            disabled={noGenerationCooldown}
+            disabled={noGenerationCooldown || isSaving}
             value={cooldownMinutes}
             onChange={(event) => setCooldownMinutes(event.target.value)}
           />
@@ -152,7 +217,11 @@ function UserPolicyRow({
             <span className="block font-medium">Unlimited generation</span>
             <span className="text-xs text-muted-foreground">Ignore the max generation cap.</span>
           </span>
-          <Switch checked={unlimitedGenerations} onCheckedChange={setUnlimitedGenerations} />
+          <Switch
+            checked={unlimitedGenerations}
+            disabled={isSaving}
+            onCheckedChange={setUnlimitedGenerations}
+          />
         </label>
         <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/20 p-3 text-sm">
           <span>
@@ -161,25 +230,14 @@ function UserPolicyRow({
               Allow immediate repeat generations.
             </span>
           </span>
-          <Switch checked={noGenerationCooldown} onCheckedChange={setNoGenerationCooldown} />
+          <Switch
+            checked={noGenerationCooldown}
+            disabled={isSaving}
+            onCheckedChange={setNoGenerationCooldown}
+          />
         </label>
-        <Button
-          size="sm"
-          disabled={isSaving}
-          onClick={() =>
-            onSave({
-              maxGenerations:
-                unlimitedGenerations || maxGenerations.trim() === ''
-                  ? null
-                  : Number(maxGenerations),
-              generationCooldownSeconds: noGenerationCooldown
-                ? 0
-                : Number(cooldownMinutes || 0) * 60,
-              unlimitedGenerations,
-              noGenerationCooldown,
-            })
-          }
-        >
+        {saveError ? <p className="text-xs text-red-400">{saveError}</p> : null}
+        <Button size="sm" disabled={isSaving} onClick={() => void handleSave()}>
           {isSaving ? <Loader2 className="animate-spin" /> : null}
           Save policy
         </Button>

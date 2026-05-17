@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/hooks/queries';
 import { adminService } from '@/services/admin/admin-service';
+import { AdminUser } from '@/types';
 
 export function useAdminUsers() {
   return useQuery({
@@ -26,7 +27,10 @@ export function useUpdateUserGenerationPolicy() {
         unlimitedGenerations: input.unlimitedGenerations,
         noGenerationCooldown: input.noGenerationCooldown,
       }),
-    onSuccess: () => {
+    onSuccess: (updated) => {
+      queryClient.setQueryData<AdminUser[]>(queryKeys.adminUsers, (current) =>
+        current?.map((user) => (user.id === updated.id ? updated : user)) ?? current
+      );
       void queryClient.invalidateQueries({ queryKey: queryKeys.adminUsers });
     },
   });
