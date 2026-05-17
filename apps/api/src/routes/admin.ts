@@ -20,6 +20,13 @@ const tokenUsageQuerySchema = z.object({
   to: z.string().optional(),
 });
 
+const userGenerationPolicySchema = z.object({
+  maxGenerations: z.number().int().min(0).nullable().optional(),
+  generationCooldownSeconds: z.number().int().min(0).max(60 * 60 * 24 * 30).optional(),
+  unlimitedGenerations: z.boolean().optional(),
+  noGenerationCooldown: z.boolean().optional(),
+});
+
 export async function adminRoutes(fastify: FastifyInstance) {
   const gateway = new AIGatewayService(fastify.db, fastify.redis);
 
@@ -38,6 +45,12 @@ export async function adminRoutes(fastify: FastifyInstance) {
         name: true,
         avatar: true,
         role: true,
+        isDemo: true,
+        maxGenerations: true,
+        generationCooldownSeconds: true,
+        unlimitedGenerations: true,
+        noGenerationCooldown: true,
+        lastGenerationAt: true,
         createdAt: true,
         updatedAt: true,
         _count: {
@@ -55,6 +68,51 @@ export async function adminRoutes(fastify: FastifyInstance) {
     });
 
     return { success: true, data: users };
+  });
+
+  fastify.patch('/admin/users/:id/generation-policy', {
+    preHandler: requireAdmin,
+    schema: {
+      tags: ['Admin'],
+      summary: 'Update per-user roadmap generation policy',
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request) => {
+    const params = z.object({ id: z.string().min(1) }).parse(request.params);
+    const input = userGenerationPolicySchema.parse(request.body);
+    const user = await fastify.db.user.update({
+      where: { id: params.id },
+      data: {
+        ...(input.maxGenerations !== undefined ? { maxGenerations: input.maxGenerations } : {}),
+        ...(input.generationCooldownSeconds !== undefined ? { generationCooldownSeconds: input.generationCooldownSeconds } : {}),
+        ...(input.unlimitedGenerations !== undefined ? { unlimitedGenerations: input.unlimitedGenerations } : {}),
+        ...(input.noGenerationCooldown !== undefined ? { noGenerationCooldown: input.noGenerationCooldown } : {}),
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        avatar: true,
+        role: true,
+        isDemo: true,
+        maxGenerations: true,
+        generationCooldownSeconds: true,
+        unlimitedGenerations: true,
+        noGenerationCooldown: true,
+        lastGenerationAt: true,
+        createdAt: true,
+        updatedAt: true,
+        _count: {
+          select: {
+            roadmaps: true,
+            sessions: true,
+            providerKeys: true,
+          },
+        },
+      },
+    });
+
+    return { success: true, data: user };
   });
 
   fastify.post('/admin/ai/default-provider', {

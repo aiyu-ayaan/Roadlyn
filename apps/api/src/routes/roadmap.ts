@@ -13,20 +13,23 @@ const generateSchema = z.object({
   weeklyHours: z.number().int().positive().max(80).optional(),
   moduleCount: z.number().int().min(4).max(6).default(6),
   courseDepth: z.enum(['standard', 'full-length', 'masterclass']).default('masterclass'),
-  generationOptions: z.object({
-    liveSearch: z.boolean().default(true),
-    youtubeVideos: z.boolean().default(true),
-    githubRepos: z.boolean().default(true),
-    officialDocs: z.boolean().default(true),
-    projects: z.boolean().default(true),
-    quizzes: z.boolean().default(true),
-    interviewPrep: z.boolean().default(true),
-    summaries: z.boolean().default(true),
-    certifications: z.boolean().default(true),
-  }).default({}),
+  generationOptions: z
+    .object({
+      liveSearch: z.boolean().default(true),
+      youtubeVideos: z.boolean().default(true),
+      githubRepos: z.boolean().default(true),
+      officialDocs: z.boolean().default(true),
+      projects: z.boolean().default(true),
+      quizzes: z.boolean().default(true),
+      interviewPrep: z.boolean().default(true),
+      summaries: z.boolean().default(true),
+      certifications: z.boolean().default(true),
+    })
+    .default({}),
   providerId: z.string().optional(),
   modelId: z.string().optional(),
   useUserDefaults: z.boolean().default(false),
+  visibility: z.enum(['PRIVATE', 'PUBLIC']).default('PRIVATE'),
 });
 
 type GenerateInput = z.infer<typeof generateSchema>;
@@ -70,6 +73,12 @@ interface RoadmapRecord {
   researchedResources: unknown;
   providerId: string | null;
   modelId: string | null;
+  visibility: string;
+  ownerName?: string | null;
+  ownerEmail?: string | null;
+  enrollmentCount?: number;
+  isEnrolled?: boolean;
+  source?: 'generated' | 'enrolled';
   errorMessage: string | null;
   completedAt: Date | null;
   createdAt: Date;
@@ -79,89 +88,135 @@ interface RoadmapRecord {
 export async function roadmapRoutes(fastify: FastifyInstance) {
   const gateway = new AIGatewayService(fastify.db, fastify.redis);
 
-  fastify.get('/roadmaps', {
-    preHandler: requireScope('ai:read'),
-    schema: {
-      tags: ['Roadmaps'],
-      summary: 'List roadmaps for the authenticated user',
-      security: [{ bearerAuth: [] }],
+  fastify.get(
+    '/roadmaps',
+    {
+      preHandler: requireScope('ai:read'),
+      schema: {
+        tags: ['Roadmaps'],
+        summary: 'List roadmaps for the authenticated user',
+        security: [{ bearerAuth: [] }],
+      },
     },
-  }, async (request) => {
-    if (!request.auth?.userId) {
-      return { success: true, data: [] };
-    }
+    async (request) => {
+      if (!request.auth?.userId) {
+        return { success: true, data: [] };
+      }
 
-    const roadmaps = await fastify.db.$queryRawUnsafe<RoadmapRecord[]>(
-      `SELECT "id", "title", "topic", "status", "progress", "errorMessage", "completedAt", "createdAt", "updatedAt"
-       FROM "Roadmap"
-       WHERE "userId" = $1
+      const roadmaps = await fastify.db.$queryRawUnsafe<RoadmapRecord[]>(
+        `SELECT
+         r."id", r."title", r."topic", r."status", r."progress", r."visibility",
+         r."errorMessage", r."completedAt", r."createdAt", r."updatedAt",
+         COALESCE(enrollment_counts."count", 0)::int AS "enrollmentCount",
+         'generated' AS "source",
+         u."name" AS "ownerName",
+         u."email" AS "ownerEmail"
+       FROM "Roadmap" r
+       JOIN "User" u ON u."id" = r."userId"
+       LEFT JOIN (
+         SELECT "roadmapId", COUNT(*) AS "count"
+         FROM "RoadmapEnrollment"
+         GROUP BY "roadmapId"
+       ) enrollment_counts ON enrollment_counts."roadmapId" = r."id"
+       WHERE r."userId" = $1
+       UNION ALL
+       SELECT
+         r."id", r."title", r."topic", r."status", r."progress", r."visibility",
+         r."errorMessage", r."completedAt", e."createdAt", r."updatedAt",
+         COALESCE(enrollment_counts."count", 0)::int AS "enrollmentCount",
+         'enrolled' AS "source",
+         u."name" AS "ownerName",
+         u."email" AS "ownerEmail"
+       FROM "RoadmapEnrollment" e
+       JOIN "Roadmap" r ON r."id" = e."roadmapId"
+       JOIN "User" u ON u."id" = r."userId"
+       LEFT JOIN (
+         SELECT "roadmapId", COUNT(*) AS "count"
+         FROM "RoadmapEnrollment"
+         GROUP BY "roadmapId"
+       ) enrollment_counts ON enrollment_counts."roadmapId" = r."id"
+       WHERE e."userId" = $1 AND r."userId" <> $1
        ORDER BY "updatedAt" DESC`,
-      request.auth.userId,
-    );
-
-    return { success: true, data: roadmaps };
-  });
-
-  fastify.get('/roadmaps/:id', {
-    preHandler: requireScope('ai:read'),
-    schema: {
-      tags: ['Roadmaps'],
-      summary: 'Get a generated roadmap course',
-      security: [{ bearerAuth: [] }],
-    },
-  }, async (request) => {
-    if (!request.auth?.userId) {
-      throw new ApiError(403, 'USER_SESSION_REQUIRED', 'Roadmap details require a user session');
-    }
-
-    const params = z.object({ id: z.string().min(1) }).parse(request.params);
-    const [roadmap] = await fastify.db.$queryRawUnsafe<RoadmapRecord[]>(
-      `SELECT *
-       FROM "Roadmap"
-       WHERE "id" = $1 AND "userId" = $2
-       LIMIT 1`,
-      params.id,
-      request.auth.userId,
-    );
-
-    if (!roadmap) {
-      throw new ApiError(404, 'ROADMAP_NOT_FOUND', 'Roadmap not found');
-    }
-
-    if (
-      roadmap.status === 'FAILED' &&
-      !roadmap.generatedCourse &&
-      Array.isArray(roadmap.researchedResources)
-    ) {
-      const fallbackCourse = buildFallbackCourse(
-        {
-          topic: roadmap.topic ?? roadmap.title,
-          experienceLevel: roadmap.experienceLevel ?? undefined,
-          goal: roadmap.goal ?? undefined,
-          weeklyHours: roadmap.weeklyHours ?? undefined,
-          moduleCount: 6,
-          courseDepth: 'masterclass',
-          generationOptions: DEFAULT_GENERATION_OPTIONS,
-          useUserDefaults: true,
-        },
-        roadmap.researchedResources as ResearchResource[],
+        request.auth.userId
       );
 
-      await updateRoadmapJob(fastify, roadmap.id, {
-        title: fallbackCourse.title,
-        status: 'COMPLETED',
-        progress: 100,
-        generatedCourse: fallbackCourse,
-        errorMessage: roadmap.errorMessage
-          ? `AI provider failed earlier, so Roadlyn recovered this course from scraped research: ${roadmap.errorMessage}`
-          : 'AI provider failed earlier, so Roadlyn recovered this course from scraped research.',
-        completedAt: new Date(),
-      });
+      return { success: true, data: roadmaps };
+    }
+  );
 
-      return {
-        success: true,
-        data: {
-          ...roadmap,
+  fastify.get(
+    '/roadmaps/:id',
+    {
+      preHandler: requireScope('ai:read'),
+      schema: {
+        tags: ['Roadmaps'],
+        summary: 'Get a generated roadmap course',
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async (request) => {
+      if (!request.auth?.userId) {
+        throw new ApiError(403, 'USER_SESSION_REQUIRED', 'Roadmap details require a user session');
+      }
+
+      const params = z.object({ id: z.string().min(1) }).parse(request.params);
+      const [roadmap] = await fastify.db.$queryRawUnsafe<RoadmapRecord[]>(
+        `SELECT
+         r.*,
+         u."name" AS "ownerName",
+         u."email" AS "ownerEmail",
+         COALESCE(enrollment_counts."count", 0)::int AS "enrollmentCount",
+         EXISTS (
+           SELECT 1 FROM "RoadmapEnrollment" e
+           WHERE e."roadmapId" = r."id" AND e."userId" = $2
+         ) AS "isEnrolled",
+         CASE WHEN r."userId" = $2 THEN 'generated' ELSE 'enrolled' END AS "source"
+       FROM "Roadmap" r
+       JOIN "User" u ON u."id" = r."userId"
+       LEFT JOIN (
+         SELECT "roadmapId", COUNT(*) AS "count"
+         FROM "RoadmapEnrollment"
+         GROUP BY "roadmapId"
+       ) enrollment_counts ON enrollment_counts."roadmapId" = r."id"
+       WHERE r."id" = $1
+         AND (
+           r."userId" = $2
+           OR r."visibility" = 'PUBLIC'
+           OR EXISTS (
+             SELECT 1 FROM "RoadmapEnrollment" e
+             WHERE e."roadmapId" = r."id" AND e."userId" = $2
+           )
+         )
+       LIMIT 1`,
+        params.id,
+        request.auth.userId
+      );
+
+      if (!roadmap) {
+        throw new ApiError(404, 'ROADMAP_NOT_FOUND', 'Roadmap not found');
+      }
+
+      if (
+        roadmap.status === 'FAILED' &&
+        !roadmap.generatedCourse &&
+        Array.isArray(roadmap.researchedResources)
+      ) {
+        const fallbackCourse = buildFallbackCourse(
+          {
+            topic: roadmap.topic ?? roadmap.title,
+            experienceLevel: roadmap.experienceLevel ?? undefined,
+            goal: roadmap.goal ?? undefined,
+            weeklyHours: roadmap.weeklyHours ?? undefined,
+            moduleCount: 6,
+            courseDepth: 'masterclass',
+            generationOptions: DEFAULT_GENERATION_OPTIONS,
+            useUserDefaults: true,
+            visibility: roadmap.visibility === 'PUBLIC' ? 'PUBLIC' : 'PRIVATE',
+          },
+          roadmap.researchedResources as ResearchResource[]
+        );
+
+        await updateRoadmapJob(fastify, roadmap.id, {
           title: fallbackCourse.title,
           status: 'COMPLETED',
           progress: 100,
@@ -170,102 +225,273 @@ export async function roadmapRoutes(fastify: FastifyInstance) {
             ? `AI provider failed earlier, so Roadlyn recovered this course from scraped research: ${roadmap.errorMessage}`
             : 'AI provider failed earlier, so Roadlyn recovered this course from scraped research.',
           completedAt: new Date(),
+        });
+
+        return {
+          success: true,
+          data: {
+            ...roadmap,
+            title: fallbackCourse.title,
+            status: 'COMPLETED',
+            progress: 100,
+            generatedCourse: fallbackCourse,
+            errorMessage: roadmap.errorMessage
+              ? `AI provider failed earlier, so Roadlyn recovered this course from scraped research: ${roadmap.errorMessage}`
+              : 'AI provider failed earlier, so Roadlyn recovered this course from scraped research.',
+            completedAt: new Date(),
+          },
+        };
+      }
+
+      return { success: true, data: roadmap };
+    }
+  );
+
+  fastify.delete(
+    '/roadmaps/:id',
+    {
+      preHandler: requireScope('ai:write'),
+      schema: {
+        tags: ['Roadmaps'],
+        summary: 'Delete a generated roadmap',
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async (request) => {
+      if (!request.auth?.userId) {
+        throw new ApiError(
+          403,
+          'USER_SESSION_REQUIRED',
+          'Deleting a roadmap requires a user session'
+        );
+      }
+
+      const params = z.object({ id: z.string().min(1) }).parse(request.params);
+      const deleted = await fastify.db.roadmap.deleteMany({
+        where: {
+          id: params.id,
+          userId: request.auth.userId,
+        },
+      });
+
+      if (deleted.count === 0) {
+        throw new ApiError(404, 'ROADMAP_NOT_FOUND', 'Roadmap not found');
+      }
+
+      return { success: true, data: { id: params.id } };
+    }
+  );
+
+  fastify.get(
+    '/roadmaps/discover/public',
+    {
+      preHandler: requireScope('ai:read'),
+      schema: {
+        tags: ['Roadmaps'],
+        summary: 'List public roadmaps available for discovery',
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async (request) => {
+      if (!request.auth?.userId) {
+        return { success: true, data: [] };
+      }
+
+      const query = z.object({ q: z.string().optional() }).parse(request.query);
+      const search = query.q?.trim();
+      const roadmaps = await fastify.db.$queryRawUnsafe<RoadmapRecord[]>(
+        `SELECT
+         r."id", r."title", r."topic", r."status", r."progress", r."visibility",
+         r."errorMessage", r."completedAt", r."createdAt", r."updatedAt",
+         u."name" AS "ownerName",
+         u."email" AS "ownerEmail",
+         COALESCE(enrollment_counts."count", 0)::int AS "enrollmentCount",
+         EXISTS (
+           SELECT 1 FROM "RoadmapEnrollment" e
+           WHERE e."roadmapId" = r."id" AND e."userId" = $1
+         ) AS "isEnrolled",
+         CASE WHEN r."userId" = $1 THEN 'generated' ELSE 'enrolled' END AS "source"
+       FROM "Roadmap" r
+       JOIN "User" u ON u."id" = r."userId"
+       LEFT JOIN (
+         SELECT "roadmapId", COUNT(*) AS "count"
+         FROM "RoadmapEnrollment"
+         GROUP BY "roadmapId"
+       ) enrollment_counts ON enrollment_counts."roadmapId" = r."id"
+       WHERE r."visibility" = 'PUBLIC'
+         AND r."status" = 'COMPLETED'
+         AND ($2::text IS NULL OR r."title" ILIKE '%' || $2 || '%' OR r."topic" ILIKE '%' || $2 || '%')
+       ORDER BY COALESCE(enrollment_counts."count", 0) DESC, r."updatedAt" DESC
+       LIMIT 60`,
+        request.auth.userId,
+        search ?? null
+      );
+
+      return { success: true, data: roadmaps };
+    }
+  );
+
+  fastify.post(
+    '/roadmaps/:id/enroll',
+    {
+      preHandler: requireScope('ai:read'),
+      schema: {
+        tags: ['Roadmaps'],
+        summary: 'Add a public roadmap to the authenticated user roadmap shelf',
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async (request) => {
+      if (!request.auth?.userId) {
+        throw new ApiError(
+          403,
+          'USER_SESSION_REQUIRED',
+          'Adding a roadmap requires a user session'
+        );
+      }
+
+      const params = z.object({ id: z.string().min(1) }).parse(request.params);
+      const [roadmap] = await fastify.db.$queryRawUnsafe<
+        Array<{ id: string; userId: string; visibility: string }>
+      >(
+        `SELECT "id", "userId", "visibility"
+       FROM "Roadmap"
+       WHERE "id" = $1 AND "status" = 'COMPLETED'
+       LIMIT 1`,
+        params.id
+      );
+
+      if (!roadmap || roadmap.visibility !== 'PUBLIC') {
+        throw new ApiError(404, 'PUBLIC_ROADMAP_NOT_FOUND', 'Public roadmap not found');
+      }
+
+      if (roadmap.userId === request.auth.userId) {
+        return {
+          success: true,
+          data: { roadmapId: params.id, alreadyOwned: true },
+        };
+      }
+
+      await fastify.db.$executeRawUnsafe(
+        `INSERT INTO "RoadmapEnrollment" ("id", "roadmapId", "userId", "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, NOW(), NOW())
+       ON CONFLICT ("roadmapId", "userId") DO UPDATE SET "updatedAt" = NOW()`,
+        randomUUID(),
+        params.id,
+        request.auth.userId
+      );
+
+      return { success: true, data: { roadmapId: params.id } };
+    }
+  );
+
+  fastify.delete(
+    '/roadmaps/:id/enroll',
+    {
+      preHandler: requireScope('ai:read'),
+      schema: {
+        tags: ['Roadmaps'],
+        summary: 'Remove a public roadmap from the authenticated user roadmap shelf',
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async (request) => {
+      if (!request.auth?.userId) {
+        throw new ApiError(
+          403,
+          'USER_SESSION_REQUIRED',
+          'Removing a roadmap requires a user session'
+        );
+      }
+
+      const params = z.object({ id: z.string().min(1) }).parse(request.params);
+      await fastify.db.$executeRawUnsafe(
+        `DELETE FROM "RoadmapEnrollment" WHERE "roadmapId" = $1 AND "userId" = $2`,
+        params.id,
+        request.auth.userId
+      );
+
+      return { success: true, data: { roadmapId: params.id } };
+    }
+  );
+
+  fastify.get(
+    '/roadmaps/resource-preview',
+    {
+      preHandler: requireScope('ai:read'),
+      schema: {
+        tags: ['Roadmaps'],
+        summary: 'Fetch a static in-app preview for a researched resource',
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async (request) => {
+      const query = z.object({ url: z.string().url() }).parse(request.query);
+      const preview = await fetchResourcePreview(query.url);
+
+      return { success: true, data: preview };
+    }
+  );
+
+  fastify.post(
+    '/roadmaps/generate',
+    {
+      preHandler: requireScope('ai:write'),
+      schema: {
+        tags: ['Roadmaps'],
+        summary: 'Generate a roadmap from live web research through the dynamic AI gateway',
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async (request) => {
+      if (!request.auth?.userId) {
+        throw new ApiError(
+          403,
+          'USER_SESSION_REQUIRED',
+          'Background roadmap generation requires a user session'
+        );
+      }
+
+      const input = generateSchema.parse(request.body);
+      await assertCanGenerateRoadmap(fastify, request.auth.userId);
+
+      const roadmapId = randomUUID();
+      const [roadmap] = await fastify.db.$queryRawUnsafe<RoadmapRecord[]>(
+        `INSERT INTO "Roadmap"
+        ("id", "userId", "title", "topic", "experienceLevel", "goal", "weeklyHours", "status", "progress", "providerId", "modelId", "visibility", "createdAt", "updatedAt")
+       VALUES
+        ($1, $2, $3, $4, $5, $6, $7, 'QUEUED', 5, $8, $9, $10, NOW(), NOW())
+       RETURNING "id", "title", "topic", "status", "progress", "visibility", "createdAt", "updatedAt"`,
+        roadmapId,
+        request.auth.userId,
+        `${input.topic} roadmap`,
+        input.topic,
+        input.experienceLevel ?? null,
+        input.goal ?? null,
+        input.weeklyHours ?? null,
+        input.providerId ?? null,
+        input.modelId ?? null,
+        input.visibility
+      );
+
+      void runRoadmapGenerationJob({
+        fastify,
+        gateway,
+        roadmapId: roadmap.id,
+        userId: request.auth.userId,
+        input,
+      });
+
+      return {
+        success: true,
+        data: {
+          roadmapId: roadmap.id,
+          roadmap,
+          status: roadmap.status,
         },
       };
     }
-
-    return { success: true, data: roadmap };
-  });
-
-  fastify.delete('/roadmaps/:id', {
-    preHandler: requireScope('ai:write'),
-    schema: {
-      tags: ['Roadmaps'],
-      summary: 'Delete a generated roadmap',
-      security: [{ bearerAuth: [] }],
-    },
-  }, async (request) => {
-    if (!request.auth?.userId) {
-      throw new ApiError(403, 'USER_SESSION_REQUIRED', 'Deleting a roadmap requires a user session');
-    }
-
-    const params = z.object({ id: z.string().min(1) }).parse(request.params);
-    const deleted = await fastify.db.roadmap.deleteMany({
-      where: {
-        id: params.id,
-        userId: request.auth.userId,
-      },
-    });
-
-    if (deleted.count === 0) {
-      throw new ApiError(404, 'ROADMAP_NOT_FOUND', 'Roadmap not found');
-    }
-
-    return { success: true, data: { id: params.id } };
-  });
-
-  fastify.get('/roadmaps/resource-preview', {
-    preHandler: requireScope('ai:read'),
-    schema: {
-      tags: ['Roadmaps'],
-      summary: 'Fetch a static in-app preview for a researched resource',
-      security: [{ bearerAuth: [] }],
-    },
-  }, async (request) => {
-    const query = z.object({ url: z.string().url() }).parse(request.query);
-    const preview = await fetchResourcePreview(query.url);
-
-    return { success: true, data: preview };
-  });
-
-  fastify.post('/roadmaps/generate', {
-    preHandler: requireScope('ai:write'),
-    schema: {
-      tags: ['Roadmaps'],
-      summary: 'Generate a roadmap from live web research through the dynamic AI gateway',
-      security: [{ bearerAuth: [] }],
-    },
-  }, async (request) => {
-    if (!request.auth?.userId) {
-      throw new ApiError(403, 'USER_SESSION_REQUIRED', 'Background roadmap generation requires a user session');
-    }
-
-    const input = generateSchema.parse(request.body);
-    const roadmapId = randomUUID();
-    const [roadmap] = await fastify.db.$queryRawUnsafe<RoadmapRecord[]>(
-      `INSERT INTO "Roadmap"
-        ("id", "userId", "title", "topic", "experienceLevel", "goal", "weeklyHours", "status", "progress", "providerId", "modelId", "createdAt", "updatedAt")
-       VALUES
-        ($1, $2, $3, $4, $5, $6, $7, 'QUEUED', 5, $8, $9, NOW(), NOW())
-       RETURNING "id", "title", "topic", "status", "progress", "createdAt", "updatedAt"`,
-      roadmapId,
-      request.auth.userId,
-      `${input.topic} roadmap`,
-      input.topic,
-      input.experienceLevel ?? null,
-      input.goal ?? null,
-      input.weeklyHours ?? null,
-      input.providerId ?? null,
-      input.modelId ?? null,
-    );
-
-    void runRoadmapGenerationJob({
-      fastify,
-      gateway,
-      roadmapId: roadmap.id,
-      userId: request.auth.userId,
-      input,
-    });
-
-    return {
-      success: true,
-      data: {
-        roadmapId: roadmap.id,
-        roadmap,
-        status: roadmap.status,
-      },
-    };
-  });
+  );
 }
 
 async function runRoadmapGenerationJob(input: {
@@ -305,7 +531,11 @@ async function runRoadmapGenerationJob(input: {
       return null;
     });
     const course = agentBundle
-      ? normalizeGeneratedCourse(composeCourseFromAgentBundle(agentBundle), input.input, researchedResources)
+      ? normalizeGeneratedCourse(
+          composeCourseFromAgentBundle(agentBundle),
+          input.input,
+          researchedResources
+        )
       : buildFallbackCourse(input.input, researchedResources);
 
     await updateRoadmapJob(fastify, roadmapId, {
@@ -330,6 +560,77 @@ async function runRoadmapGenerationJob(input: {
 
     fastify.log.error(error);
   }
+}
+
+async function assertCanGenerateRoadmap(fastify: FastifyInstance, userId: string) {
+  const [policy] = await fastify.db.$queryRawUnsafe<
+    Array<{
+      isDemo: boolean;
+      maxGenerations: number | null;
+      generationCooldownSeconds: number;
+      unlimitedGenerations: boolean;
+      noGenerationCooldown: boolean;
+      lastGenerationAt: Date | null;
+      generatedCount: number;
+    }>
+  >(
+    `SELECT
+       u."isDemo",
+       u."maxGenerations",
+       u."generationCooldownSeconds",
+       u."unlimitedGenerations",
+       u."noGenerationCooldown",
+       u."lastGenerationAt",
+       COUNT(r."id")::int AS "generatedCount"
+     FROM "User" u
+     LEFT JOIN "Roadmap" r ON r."userId" = u."id"
+     WHERE u."id" = $1
+     GROUP BY u."id"`,
+    userId
+  );
+
+  if (!policy) {
+    throw new ApiError(404, 'USER_NOT_FOUND', 'User not found');
+  }
+
+  if (policy.isDemo) {
+    throw new ApiError(403, 'DEMO_AI_DISABLED', 'AI generation is disabled in demo sessions');
+  }
+
+  if (
+    !policy.unlimitedGenerations &&
+    policy.maxGenerations !== null &&
+    policy.generatedCount >= policy.maxGenerations
+  ) {
+    throw new ApiError(
+      429,
+      'GENERATION_LIMIT_REACHED',
+      'You have reached your roadmap generation limit'
+    );
+  }
+
+  if (
+    !policy.noGenerationCooldown &&
+    policy.generationCooldownSeconds > 0 &&
+    policy.lastGenerationAt
+  ) {
+    const cooldownEndsAt =
+      policy.lastGenerationAt.getTime() + policy.generationCooldownSeconds * 1000;
+    const remainingMs = cooldownEndsAt - Date.now();
+
+    if (remainingMs > 0) {
+      throw new ApiError(
+        429,
+        'GENERATION_COOLDOWN_ACTIVE',
+        `Please wait ${Math.ceil(remainingMs / 1000)} seconds before generating another roadmap`
+      );
+    }
+  }
+
+  await fastify.db.$executeRawUnsafe(
+    `UPDATE "User" SET "lastGenerationAt" = NOW(), "updatedAt" = NOW() WHERE "id" = $1`,
+    userId
+  );
 }
 
 async function generateCourseWithAgents(input: {
@@ -443,7 +744,10 @@ async function fetchResourcePreview(url: string) {
       return {
         url: parsed.toString(),
         title: parsed.hostname,
-        html: buildPreviewFallbackHtml(parsed.toString(), 'This resource cannot be rendered as a static page preview.'),
+        html: buildPreviewFallbackHtml(
+          parsed.toString(),
+          'This resource cannot be rendered as a static page preview.'
+        ),
       };
     }
 
@@ -461,7 +765,11 @@ async function fetchResourcePreview(url: string) {
 function parsePreviewUrl(url: string) {
   const parsed = new URL(url);
   if (!['http:', 'https:'].includes(parsed.protocol) || isBlockedPreviewHost(parsed.hostname)) {
-    throw new ApiError(400, 'RESOURCE_PREVIEW_URL_BLOCKED', 'This resource URL cannot be previewed');
+    throw new ApiError(
+      400,
+      'RESOURCE_PREVIEW_URL_BLOCKED',
+      'This resource URL cannot be previewed'
+    );
   }
 
   return parsed;
@@ -488,7 +796,7 @@ function sanitizePreviewHtml(html: string, baseUrl: URL) {
     .replace(/<meta[^>]+http-equiv=["']?content-security-policy["']?[^>]*>/gi, '');
   const withBase = withoutScripts.replace(
     /<head([^>]*)>/i,
-    `<head$1><base href="${escapeHtml(baseUrl.origin)}">`,
+    `<head$1><base href="${escapeHtml(baseUrl.origin)}">`
   );
 
   if (withBase !== withoutScripts) {
@@ -550,7 +858,7 @@ async function updateRoadmapJob(
     modelId?: string;
     errorMessage?: string;
     completedAt?: Date;
-  },
+  }
 ) {
   const assignments: string[] = ['"updatedAt" = NOW()'];
   const values: unknown[] = [];
@@ -563,8 +871,10 @@ async function updateRoadmapJob(
   if (data.title !== undefined) addValue('title', data.title);
   if (data.status !== undefined) addValue('status', data.status);
   if (data.progress !== undefined) addValue('progress', data.progress);
-  if (data.generatedCourse !== undefined) addValue('generatedCourse', JSON.stringify(data.generatedCourse), '::jsonb');
-  if (data.researchedResources !== undefined) addValue('researchedResources', JSON.stringify(data.researchedResources), '::jsonb');
+  if (data.generatedCourse !== undefined)
+    addValue('generatedCourse', JSON.stringify(data.generatedCourse), '::jsonb');
+  if (data.researchedResources !== undefined)
+    addValue('researchedResources', JSON.stringify(data.researchedResources), '::jsonb');
   if (data.providerId !== undefined) addValue('providerId', data.providerId);
   if (data.modelId !== undefined) addValue('modelId', data.modelId);
   if (data.errorMessage !== undefined) addValue('errorMessage', data.errorMessage);
@@ -573,7 +883,7 @@ async function updateRoadmapJob(
   values.push(roadmapId);
   await fastify.db.$executeRawUnsafe(
     `UPDATE "Roadmap" SET ${assignments.join(', ')} WHERE "id" = $${values.length}`,
-    ...values,
+    ...values
   );
 }
 
@@ -590,10 +900,7 @@ function buildCourseSystemPrompt() {
   ].join('\n');
 }
 
-function buildCurriculumAgentPrompt(
-  input: GenerateInput,
-  researchedResources: ResearchResource[],
-) {
+function buildCurriculumAgentPrompt(input: GenerateInput, researchedResources: ResearchResource[]) {
   return JSON.stringify({
     agent: 'Deep curriculum writer',
     task: 'Write the full-length course overview and module content for a course player.',
@@ -613,10 +920,34 @@ function buildCurriculumAgentPrompt(
           estimatedDuration: '',
           prerequisites: [''],
           learningObjectives: [''],
-          tutorials: [{ title: '', source: '', url: '', summary: '', freshnessRelevance: '' }],
-          youtubeVideos: [{ title: '', channelName: null, duration: null, url: '', whyRecommended: '' }],
+          tutorials: [
+            {
+              title: '',
+              source: '',
+              url: '',
+              summary: '',
+              freshnessRelevance: '',
+            },
+          ],
+          youtubeVideos: [
+            {
+              title: '',
+              channelName: null,
+              duration: null,
+              url: '',
+              whyRecommended: '',
+            },
+          ],
           officialDocs: [{ title: '', source: '', url: '', summary: '' }],
-          githubRepos: [{ repositoryName: '', url: '', stars: null, whyUseful: '', projectRelevance: '' }],
+          githubRepos: [
+            {
+              repositoryName: '',
+              url: '',
+              stars: null,
+              whyUseful: '',
+              projectRelevance: '',
+            },
+          ],
           exercises: [''],
           miniProjects: [''],
           quizzes: [{ question: '', answer: '' }],
@@ -642,10 +973,7 @@ function buildCurriculumAgentPrompt(
   });
 }
 
-function buildPortfolioAgentPrompt(
-  input: GenerateInput,
-  researchedResources: ResearchResource[],
-) {
+function buildPortfolioAgentPrompt(input: GenerateInput, researchedResources: ResearchResource[]) {
   return JSON.stringify({
     agent: 'Portfolio, assessment, and interview coach',
     task: 'Create the projects, milestones, certifications, interview prep, and recommended tools for the course.',
@@ -693,7 +1021,8 @@ function buildPromptInput(input: GenerateInput) {
     weeklyHours: input.weeklyHours ?? 8,
     targetModuleCount: input.moduleCount,
     courseDepth: input.courseDepth,
-    courseDepthInstruction: 'Write full-length detailed modules with original instructional content, examples, tasks, quizzes, and recaps.',
+    courseDepthInstruction:
+      'Write full-length detailed modules with original instructional content, examples, tasks, quizzes, and recaps.',
   };
 }
 
@@ -721,7 +1050,7 @@ function composeCourseFromAgentBundle(bundle: AgentCourseBundle) {
 function normalizeGeneratedCourse(
   candidate: unknown,
   input: GenerateInput,
-  resources: ResearchResource[],
+  resources: ResearchResource[]
 ) {
   const fallback = buildFallbackCourse(input, resources);
   const record = asRecord(candidate);
@@ -750,8 +1079,12 @@ function normalizeGeneratedCourse(
     phases,
     projects: recordArray(record.projects).length ? record.projects : fallback.projects,
     resources,
-    interviewPrep: recordArray(record.interviewPrep).length ? record.interviewPrep : fallback.interviewPrep,
-    certifications: recordArray(record.certifications).length ? record.certifications : fallback.certifications,
+    interviewPrep: recordArray(record.interviewPrep).length
+      ? record.interviewPrep
+      : fallback.interviewPrep,
+    certifications: recordArray(record.certifications).length
+      ? record.certifications
+      : fallback.certifications,
     recommendedTools: stringArray(record.recommendedTools, fallback.recommendedTools).slice(0, 16),
     milestones: recordArray(record.milestones).length ? record.milestones : fallback.milestones,
     generationMetadata: {
@@ -768,7 +1101,7 @@ function normalizePhase(
   index: number,
   topic: string,
   resources: ResearchResource[],
-  resourceState: PhaseResourceState,
+  resourceState: PhaseResourceState
 ) {
   const phaseFallbackResources = selectFallbackPhaseResources(resources, resourceState, false);
   const fallback = buildFallbackPhase(
@@ -778,11 +1111,17 @@ function normalizePhase(
     phaseFallbackResources.officialDocs,
     phaseFallbackResources.youtubeVideos,
     phaseFallbackResources.githubRepos,
-    phaseFallbackResources.tutorials,
+    phaseFallbackResources.tutorials
   );
-  const officialDocs = recordArray(phase.officialDocs).length ? phase.officialDocs : fallback.officialDocs;
-  const youtubeVideos = recordArray(phase.youtubeVideos).length ? phase.youtubeVideos : fallback.youtubeVideos;
-  const githubRepos = recordArray(phase.githubRepos).length ? phase.githubRepos : fallback.githubRepos;
+  const officialDocs = recordArray(phase.officialDocs).length
+    ? phase.officialDocs
+    : fallback.officialDocs;
+  const youtubeVideos = recordArray(phase.youtubeVideos).length
+    ? phase.youtubeVideos
+    : fallback.youtubeVideos;
+  const githubRepos = recordArray(phase.githubRepos).length
+    ? phase.githubRepos
+    : fallback.githubRepos;
   const tutorials = recordArray(phase.tutorials).length ? phase.tutorials : fallback.tutorials;
 
   return {
@@ -790,7 +1129,10 @@ function normalizePhase(
     description: readString(phase.description, fallback.description),
     estimatedDuration: readString(phase.estimatedDuration, fallback.estimatedDuration),
     prerequisites: stringArray(phase.prerequisites, fallback.prerequisites).slice(0, 12),
-    learningObjectives: stringArray(phase.learningObjectives, fallback.learningObjectives).slice(0, 12),
+    learningObjectives: stringArray(phase.learningObjectives, fallback.learningObjectives).slice(
+      0,
+      12
+    ),
     tutorials: ensureTutorials(tutorials, resources, resourceState, 6),
     youtubeVideos: ensureYouTubeVideos(youtubeVideos, resources, resourceState, 4),
     officialDocs: ensureOfficialDocs(officialDocs, resources, resourceState, 4),
@@ -808,17 +1150,18 @@ function ensureYouTubeVideos(
   videos: unknown,
   resources: ResearchResource[],
   state: PhaseResourceState,
-  limit: number,
+  limit: number
 ) {
   const existing = uniqueExistingRecords(recordArray(videos), state, limit);
-  const injected = takeUnusedResources(resources, ['youtube'], state, limit - existing.length)
-    .map((resource) => ({
+  const injected = takeUnusedResources(resources, ['youtube'], state, limit - existing.length).map(
+    (resource) => ({
       title: resource.title,
       channelName: resource.channelName,
       duration: resource.duration,
       url: resource.url,
       whyRecommended: resource.summary ?? resource.freshnessRelevance,
-    }));
+    })
+  );
 
   return [...existing, ...injected].slice(0, limit);
 }
@@ -827,16 +1170,20 @@ function ensureOfficialDocs(
   docs: unknown,
   resources: ResearchResource[],
   state: PhaseResourceState,
-  limit: number,
+  limit: number
 ) {
   const existing = uniqueExistingRecords(recordArray(docs), state, limit);
-  const injected = takeUnusedResources(resources, ['officialDocs'], state, limit - existing.length)
-    .map((resource) => ({
-      title: resource.title,
-      source: resource.source,
-      url: resource.url,
-      summary: resource.summary ?? resource.freshnessRelevance,
-    }));
+  const injected = takeUnusedResources(
+    resources,
+    ['officialDocs'],
+    state,
+    limit - existing.length
+  ).map((resource) => ({
+    title: resource.title,
+    source: resource.source,
+    url: resource.url,
+    summary: resource.summary ?? resource.freshnessRelevance,
+  }));
 
   return [...existing, ...injected].slice(0, limit);
 }
@@ -845,17 +1192,18 @@ function ensureGithubRepos(
   repos: unknown,
   resources: ResearchResource[],
   state: PhaseResourceState,
-  limit: number,
+  limit: number
 ) {
   const existing = uniqueExistingRecords(recordArray(repos), state, limit);
-  const injected = takeUnusedResources(resources, ['github'], state, limit - existing.length)
-    .map((resource) => ({
+  const injected = takeUnusedResources(resources, ['github'], state, limit - existing.length).map(
+    (resource) => ({
       repositoryName: resource.title,
       url: resource.url,
       stars: resource.stars,
       whyUseful: resource.summary ?? 'Repository selected from live research.',
       projectRelevance: resource.freshnessRelevance,
-    }));
+    })
+  );
 
   return [...existing, ...injected].slice(0, limit);
 }
@@ -864,17 +1212,21 @@ function ensureTutorials(
   tutorials: unknown,
   resources: ResearchResource[],
   state: PhaseResourceState,
-  limit: number,
+  limit: number
 ) {
   const existing = uniqueExistingRecords(recordArray(tutorials), state, limit);
-  const injected = takeUnusedResources(resources, ['article', 'course', 'community'], state, limit - existing.length)
-    .map((resource) => ({
-      title: resource.title,
-      source: resource.source,
-      url: resource.url,
-      summary: resource.summary ?? resource.freshnessRelevance,
-      freshnessRelevance: resource.freshnessRelevance,
-    }));
+  const injected = takeUnusedResources(
+    resources,
+    ['article', 'course', 'community'],
+    state,
+    limit - existing.length
+  ).map((resource) => ({
+    title: resource.title,
+    source: resource.source,
+    url: resource.url,
+    summary: resource.summary ?? resource.freshnessRelevance,
+    freshnessRelevance: resource.freshnessRelevance,
+  }));
 
   return [...existing, ...injected].slice(0, limit);
 }
@@ -896,7 +1248,7 @@ function createPhaseResourceState(): PhaseResourceState {
 function selectFallbackPhaseResources(
   resources: ResearchResource[],
   state: PhaseResourceState,
-  commitSelection = true,
+  commitSelection = true
 ) {
   const selectionState = commitSelection ? state : clonePhaseResourceState(state);
 
@@ -904,7 +1256,12 @@ function selectFallbackPhaseResources(
     officialDocs: takeUnusedResources(resources, ['officialDocs'], selectionState, 4),
     youtubeVideos: takeUnusedResources(resources, ['youtube'], selectionState, 4),
     githubRepos: takeUnusedResources(resources, ['github'], selectionState, 4),
-    tutorials: takeUnusedResources(resources, ['article', 'course', 'community'], selectionState, 6),
+    tutorials: takeUnusedResources(
+      resources,
+      ['article', 'course', 'community'],
+      selectionState,
+      6
+    ),
   };
 }
 
@@ -919,7 +1276,7 @@ function takeUnusedResources(
   resources: ResearchResource[],
   kinds: ResourceKind[],
   state: PhaseResourceState,
-  limit: number,
+  limit: number
 ) {
   if (limit <= 0) {
     return [];
@@ -957,7 +1314,7 @@ function takeUnusedResources(
 function uniqueExistingRecords(
   records: Record<string, unknown>[],
   state: PhaseResourceState,
-  limit: number,
+  limit: number
 ) {
   const selected: Record<string, unknown>[] = [];
 
@@ -998,9 +1355,10 @@ function normalizeResourceUrl(url: string) {
   try {
     const parsed = new URL(url);
     const host = parsed.hostname.replace(/^www\./, '').toLowerCase();
-    const videoId = host.endsWith('youtube.com') && parsed.pathname === '/watch'
-      ? parsed.searchParams.get('v')
-      : null;
+    const videoId =
+      host.endsWith('youtube.com') && parsed.pathname === '/watch'
+        ? parsed.searchParams.get('v')
+        : null;
     parsed.hash = '';
 
     if (videoId) {
@@ -1017,7 +1375,7 @@ function normalizeResourceUrl(url: string) {
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : null;
 }
 
@@ -1061,12 +1419,36 @@ function buildFallbackCourse(input: GenerateInput, resources: ResearchResource[]
   const topic = input.topic;
   const resourceState = createPhaseResourceState();
   const moduleTemplates = [
-    ['Foundations And Mental Models', `Build the vocabulary, tooling, setup, and mental models needed to study ${topic} seriously.`, 'beginner'],
-    ['Core Skills And Guided Implementation', `Turn the fundamentals into working ${topic} features through guided implementation and repetition.`, 'intermediate'],
-    ['Applied Patterns And Real Projects', `Practice common professional patterns, debugging workflows, testing habits, and integration decisions for ${topic}.`, 'intermediate'],
-    ['Production Workflow And Quality', `Move from demos to maintainable ${topic} work with performance, security, reliability, documentation, and review habits.`, 'intermediate'],
-    ['Portfolio Capstone Studio', `Design, build, test, document, and present a substantial ${topic} capstone project.`, 'advanced'],
-    ['Interview, System Design, And Career Readiness', `Convert the portfolio into interview stories, architecture explanations, tradeoff analysis, and job-ready evidence.`, 'advanced'],
+    [
+      'Foundations And Mental Models',
+      `Build the vocabulary, tooling, setup, and mental models needed to study ${topic} seriously.`,
+      'beginner',
+    ],
+    [
+      'Core Skills And Guided Implementation',
+      `Turn the fundamentals into working ${topic} features through guided implementation and repetition.`,
+      'intermediate',
+    ],
+    [
+      'Applied Patterns And Real Projects',
+      `Practice common professional patterns, debugging workflows, testing habits, and integration decisions for ${topic}.`,
+      'intermediate',
+    ],
+    [
+      'Production Workflow And Quality',
+      `Move from demos to maintainable ${topic} work with performance, security, reliability, documentation, and review habits.`,
+      'intermediate',
+    ],
+    [
+      'Portfolio Capstone Studio',
+      `Design, build, test, document, and present a substantial ${topic} capstone project.`,
+      'advanced',
+    ],
+    [
+      'Interview, System Design, And Career Readiness',
+      `Convert the portfolio into interview stories, architecture explanations, tradeoff analysis, and job-ready evidence.`,
+      'advanced',
+    ],
   ] as const;
 
   return {
@@ -1095,7 +1477,7 @@ function buildFallbackCourse(input: GenerateInput, resources: ResearchResource[]
           phaseResources.officialDocs,
           phaseResources.youtubeVideos,
           phaseResources.githubRepos,
-          phaseResources.tutorials,
+          phaseResources.tutorials
         );
       }),
     projects: [
@@ -1103,21 +1485,44 @@ function buildFallbackCourse(input: GenerateInput, resources: ResearchResource[]
         title: `${topic} starter project`,
         level: 'beginner',
         description: 'Build a focused starter project that demonstrates the core workflow.',
-        deliverables: ['Working implementation', 'README with setup steps', 'Feature walkthrough', 'Validation checklist', 'Short reflection on tradeoffs'],
-        realWorldScenario: 'A junior developer proving they can turn documentation into a working feature.',
+        deliverables: [
+          'Working implementation',
+          'README with setup steps',
+          'Feature walkthrough',
+          'Validation checklist',
+          'Short reflection on tradeoffs',
+        ],
+        realWorldScenario:
+          'A junior developer proving they can turn documentation into a working feature.',
       },
       {
         title: `${topic} applied project`,
         level: 'intermediate',
-        description: 'Create a more complete workflow using maintained libraries and current best practices from the research sources.',
-        deliverables: ['Feature-complete app or workflow', 'Tests or validation checklist', 'Deployment or demo notes', 'Architecture notes', 'Known limitations'],
-        realWorldScenario: 'A team needs a reliable internal tool or prototype built with modern practices.',
+        description:
+          'Create a more complete workflow using maintained libraries and current best practices from the research sources.',
+        deliverables: [
+          'Feature-complete app or workflow',
+          'Tests or validation checklist',
+          'Deployment or demo notes',
+          'Architecture notes',
+          'Known limitations',
+        ],
+        realWorldScenario:
+          'A team needs a reliable internal tool or prototype built with modern practices.',
       },
       {
         title: `${topic} capstone`,
         level: 'advanced',
-        description: 'Ship a polished capstone with documentation, architecture notes, and a portfolio case study.',
-        deliverables: ['Production-style repository', 'Architecture write-up', 'Demo video outline', 'Interview talking points', 'Performance or quality review', 'Future roadmap'],
+        description:
+          'Ship a polished capstone with documentation, architecture notes, and a portfolio case study.',
+        deliverables: [
+          'Production-style repository',
+          'Architecture write-up',
+          'Demo video outline',
+          'Interview talking points',
+          'Performance or quality review',
+          'Future roadmap',
+        ],
         realWorldScenario: 'A job-ready portfolio piece that shows end-to-end ownership.',
       },
     ],
@@ -1125,7 +1530,13 @@ function buildFallbackCourse(input: GenerateInput, resources: ResearchResource[]
     interviewPrep: [
       {
         topic: `${topic} practical fluency`,
-        concepts: ['Fundamentals', 'Tooling choices', 'Debugging', 'Architecture tradeoffs', 'Deployment readiness'],
+        concepts: [
+          'Fundamentals',
+          'Tooling choices',
+          'Debugging',
+          'Architecture tradeoffs',
+          'Deployment readiness',
+        ],
         practicalQuestions: [
           `How would you design a small ${topic} project from scratch?`,
           'Which official docs or repositories would you trust first, and why?',
@@ -1133,17 +1544,38 @@ function buildFallbackCourse(input: GenerateInput, resources: ResearchResource[]
           'How would you explain your capstone architecture to a senior engineer?',
           'What tradeoff did you make during implementation, and what would you change next?',
         ],
-        portfolioSuggestion: 'Publish the capstone with a concise README, architecture notes, screenshots, and a short demo.',
+        portfolioSuggestion:
+          'Publish the capstone with a concise README, architecture notes, screenshots, and a short demo.',
       },
     ],
     certifications: [],
     recommendedTools: [...new Set(resources.map((resource) => resource.source))].slice(0, 8),
     milestones: [
-      { week: 'Week 1-2', outcome: 'Fundamentals mapped', checkpoint: 'Explain the core concepts and install the required tools.' },
-      { week: 'Week 3-6', outcome: 'Guided implementation complete', checkpoint: 'Finish exercises tied to current tutorials and docs.' },
-      { week: 'Week 7-12', outcome: 'Applied projects shipped', checkpoint: 'Publish working projects with documentation and validation notes.' },
-      { week: 'Week 13-18', outcome: 'Capstone built and reviewed', checkpoint: 'Complete architecture notes, tests, demo, and tradeoff review.' },
-      { week: 'Final weeks', outcome: 'Interview-ready portfolio', checkpoint: 'Practice practical questions and polish the case study.' },
+      {
+        week: 'Week 1-2',
+        outcome: 'Fundamentals mapped',
+        checkpoint: 'Explain the core concepts and install the required tools.',
+      },
+      {
+        week: 'Week 3-6',
+        outcome: 'Guided implementation complete',
+        checkpoint: 'Finish exercises tied to current tutorials and docs.',
+      },
+      {
+        week: 'Week 7-12',
+        outcome: 'Applied projects shipped',
+        checkpoint: 'Publish working projects with documentation and validation notes.',
+      },
+      {
+        week: 'Week 13-18',
+        outcome: 'Capstone built and reviewed',
+        checkpoint: 'Complete architecture notes, tests, demo, and tradeoff review.',
+      },
+      {
+        week: 'Final weeks',
+        outcome: 'Interview-ready portfolio',
+        checkpoint: 'Practice practical questions and polish the case study.',
+      },
     ],
   };
 }
@@ -1155,13 +1587,23 @@ function buildFallbackPhase(
   officialDocs: ResearchResource[],
   youtubeVideos: ResearchResource[],
   githubRepos: ResearchResource[],
-  tutorials: ResearchResource[],
+  tutorials: ResearchResource[]
 ) {
   return {
     title,
     description,
     estimatedDuration: '3-6 weeks',
-    prerequisites: title.includes('Foundations') ? ['Basic computer literacy', 'A development environment or learning workspace', 'Willingness to document practice work'] : ['Complete the previous module', 'Review earlier notes and blockers', 'Update your project journal'],
+    prerequisites: title.includes('Foundations')
+      ? [
+          'Basic computer literacy',
+          'A development environment or learning workspace',
+          'Willingness to document practice work',
+        ]
+      : [
+          'Complete the previous module',
+          'Review earlier notes and blockers',
+          'Update your project journal',
+        ],
     learningObjectives: [
       'Study current resources and separate durable concepts from tool-specific details',
       'Practice the core workflow repeatedly until it feels predictable',
@@ -1182,7 +1624,8 @@ function buildFallbackPhase(
       channelName: resource.channelName,
       duration: resource.duration,
       url: resource.url,
-      whyRecommended: 'Selected from live search results for tutorial or project-based learning relevance.',
+      whyRecommended:
+        'Selected from live search results for tutorial or project-based learning relevance.',
     })),
     officialDocs: officialDocs.map((resource) => ({
       title: resource.title,
@@ -1215,19 +1658,23 @@ function buildFallbackPhase(
     quizzes: [
       {
         question: 'Which resources should you trust first when details conflict?',
-        answer: 'Official documentation and actively maintained repositories, then current high-quality tutorials.',
+        answer:
+          'Official documentation and actively maintained repositories, then current high-quality tutorials.',
       },
       {
         question: 'How do you know you are ready to move to the next module?',
-        answer: 'You can explain the main ideas, complete the exercises without step-by-step help, and show a working artifact.',
+        answer:
+          'You can explain the main ideas, complete the exercises without step-by-step help, and show a working artifact.',
       },
       {
         question: 'What should you write down while learning?',
-        answer: 'Commands, definitions, errors, fixes, decisions, tradeoffs, and examples you can reuse later.',
+        answer:
+          'Commands, definitions, errors, fixes, decisions, tradeoffs, and examples you can reuse later.',
       },
       {
         question: 'Why do mini-projects matter more than passive reading?',
-        answer: 'They turn concepts into evidence and reveal practical gaps that reading alone hides.',
+        answer:
+          'They turn concepts into evidence and reveal practical gaps that reading alone hides.',
       },
     ],
     lessonNotes: [

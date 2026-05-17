@@ -118,6 +118,54 @@ export async function authRoutes(fastify: FastifyInstance) {
     return reply.redirect(githubUrl.toString());
   });
 
+  fastify.post('/auth/demo', {
+    schema: {
+      tags: ['Auth'],
+      summary: 'Create a read-only demo session',
+    },
+  }, async () => {
+    const user = await fastify.db.user.upsert({
+      where: { email: 'demo@roadlyn.local' },
+      update: {
+        name: 'Roadlyn Demo Learner',
+        isDemo: true,
+        maxGenerations: 0,
+        generationCooldownSeconds: 0,
+        unlimitedGenerations: false,
+        noGenerationCooldown: true,
+      },
+      create: {
+        email: 'demo@roadlyn.local',
+        name: 'Roadlyn Demo Learner',
+        role: 'USER',
+        isDemo: true,
+        maxGenerations: 0,
+        noGenerationCooldown: true,
+      },
+    });
+    const scopes = ['ai:read'];
+    const accessToken = fastify.jwt.sign(
+      {
+        userId: user.id,
+        scopes,
+      },
+      {
+        iss: config.OAUTH_TOKEN_ISSUER,
+        expiresIn: '2h',
+      },
+    );
+
+    return {
+      success: true,
+      data: {
+        access_token: accessToken,
+        token_type: 'Bearer',
+        expires_in: '2h',
+        scope: scopes.join(' '),
+      },
+    };
+  });
+
   fastify.get('/auth/github/callback', {
     schema: {
       tags: ['Auth'],
