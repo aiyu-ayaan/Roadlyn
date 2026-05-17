@@ -1,12 +1,17 @@
 'use client';
 
-import { ShieldCheck, Users } from 'lucide-react';
+import { useState } from 'react';
+import { Loader2, ShieldCheck, Users } from 'lucide-react';
 import { AdminRoute } from '@/components/admin/admin-shell';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useAdminUsers } from '@/hooks/use-admin';
+import { useAdminUsers, useUpdateUserGenerationPolicy } from '@/hooks/use-admin';
+import { AdminUser } from '@/types';
 
 export default function AdminUsersPage() {
   return (
@@ -18,6 +23,7 @@ export default function AdminUsersPage() {
 
 function AdminUsersContent() {
   const users = useAdminUsers();
+  const updatePolicy = useUpdateUserGenerationPolicy();
   const adminCount = users.data?.filter((user) => user.role === 'ADMIN').length ?? 0;
 
   return (
@@ -67,30 +73,117 @@ function AdminUsersContent() {
         ) : (
           <div className="overflow-hidden rounded-lg border border-border">
             {(users.data ?? []).map((workspaceUser) => (
-              <div
+              <UserPolicyRow
                 key={workspaceUser.id}
-                className="grid gap-3 border-b border-border px-4 py-3 last:border-b-0 md:grid-cols-[1.5fr_0.6fr_0.8fr_0.8fr]"
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{workspaceUser.name ?? workspaceUser.email}</p>
-                  <p className="truncate text-xs text-muted-foreground">{workspaceUser.email}</p>
-                </div>
-                <div>
-                  <Badge variant={workspaceUser.role === 'ADMIN' ? 'success' : 'secondary'}>
-                    {workspaceUser.role}
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {workspaceUser._count.roadmaps} roadmaps
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Joined {new Date(workspaceUser.createdAt).toLocaleDateString()}
-                </p>
-              </div>
+                user={workspaceUser}
+                isSaving={updatePolicy.isPending}
+                onSave={(input) => updatePolicy.mutateAsync({ id: workspaceUser.id, ...input })}
+              />
             ))}
           </div>
         )}
       </Card>
+    </div>
+  );
+}
+
+function UserPolicyRow({
+  user,
+  isSaving,
+  onSave,
+}: {
+  user: AdminUser;
+  isSaving: boolean;
+  onSave: (input: {
+    maxGenerations?: number | null;
+    generationCooldownSeconds?: number;
+    unlimitedGenerations?: boolean;
+    noGenerationCooldown?: boolean;
+  }) => Promise<unknown>;
+}) {
+  const [maxGenerations, setMaxGenerations] = useState(user.maxGenerations?.toString() ?? '');
+  const [cooldownMinutes, setCooldownMinutes] = useState(
+    user.generationCooldownSeconds ? String(Math.round(user.generationCooldownSeconds / 60)) : '0'
+  );
+  const [unlimitedGenerations, setUnlimitedGenerations] = useState(user.unlimitedGenerations);
+  const [noGenerationCooldown, setNoGenerationCooldown] = useState(user.noGenerationCooldown);
+
+  return (
+    <div className="grid gap-4 border-b border-border px-4 py-4 last:border-b-0 xl:grid-cols-[1.2fr_0.35fr_0.7fr_1.45fr]">
+      <div className="min-w-0">
+        <p className="truncate font-medium">{user.name ?? user.email}</p>
+        <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          {user._count.roadmaps} roadmaps · Joined {new Date(user.createdAt).toLocaleDateString()}
+        </p>
+      </div>
+      <div className="flex flex-wrap items-start gap-2">
+        <Badge variant={user.role === 'ADMIN' ? 'success' : 'secondary'}>{user.role}</Badge>
+        {user.isDemo ? <Badge variant="outline">Demo</Badge> : null}
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+        <label className="text-xs text-muted-foreground">
+          Max generations
+          <Input
+            className="mt-1"
+            type="number"
+            min={0}
+            disabled={unlimitedGenerations}
+            value={maxGenerations}
+            placeholder="Unlimited"
+            onChange={(event) => setMaxGenerations(event.target.value)}
+          />
+        </label>
+        <label className="text-xs text-muted-foreground">
+          Cooldown minutes
+          <Input
+            className="mt-1"
+            type="number"
+            min={0}
+            disabled={noGenerationCooldown}
+            value={cooldownMinutes}
+            onChange={(event) => setCooldownMinutes(event.target.value)}
+          />
+        </label>
+      </div>
+      <div className="space-y-3">
+        <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/20 p-3 text-sm">
+          <span>
+            <span className="block font-medium">Unlimited generation</span>
+            <span className="text-xs text-muted-foreground">Ignore the max generation cap.</span>
+          </span>
+          <Switch checked={unlimitedGenerations} onCheckedChange={setUnlimitedGenerations} />
+        </label>
+        <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/20 p-3 text-sm">
+          <span>
+            <span className="block font-medium">No cooldown</span>
+            <span className="text-xs text-muted-foreground">
+              Allow immediate repeat generations.
+            </span>
+          </span>
+          <Switch checked={noGenerationCooldown} onCheckedChange={setNoGenerationCooldown} />
+        </label>
+        <Button
+          size="sm"
+          disabled={isSaving}
+          onClick={() =>
+            onSave({
+              maxGenerations:
+                unlimitedGenerations || maxGenerations.trim() === ''
+                  ? null
+                  : Number(maxGenerations),
+              generationCooldownSeconds: noGenerationCooldown
+                ? 0
+                : Number(cooldownMinutes || 0) * 60,
+              unlimitedGenerations,
+              noGenerationCooldown,
+            })
+          }
+        >
+          {isSaving ? <Loader2 className="animate-spin" /> : null}
+          Save policy
+        </Button>
+      </div>
     </div>
   );
 }
