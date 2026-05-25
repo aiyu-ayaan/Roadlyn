@@ -62,9 +62,11 @@ export async function researchLearningResources(input: {
         return resource;
       }
 
+      const meta = await getGithubMetadata(resource.url);
       return {
         ...resource,
-        stars: await getGithubStars(resource.url),
+        stars: meta?.stars ?? null,
+        summary: meta?.summary ?? resource.summary ?? 'Repository selected from live research.',
       };
     }),
   );
@@ -170,6 +172,7 @@ async function searchYouTubeVideos(query: string): Promise<ResearchResource[]> {
         const duration =
           readYouTubeText(renderer.lengthText) ??
           readNestedString(renderer, ['lengthText', 'accessibility', 'accessibilityData', 'label']);
+        const description = readYouTubeText(renderer.descriptionSnippet);
 
         if (!videoId || !title || seen.has(videoId) || isLikelyShortVideo(title, duration)) {
           return null;
@@ -182,7 +185,7 @@ async function searchYouTubeVideos(query: string): Promise<ResearchResource[]> {
           title,
           url: `https://www.youtube.com/watch?v=${videoId}`,
           source: channelName ?? 'YouTube',
-          summary: 'Direct YouTube video result selected for playable course lessons.',
+          summary: description ?? 'Direct YouTube video result selected for playable course lessons.',
           freshnessRelevance: inferFreshness(title, `https://www.youtube.com/watch?v=${videoId}`),
           stars: null,
           duration,
@@ -337,7 +340,10 @@ function asObject(value: unknown): Record<string, unknown> | null {
 }
 
 function decodeDuckDuckGoUrl(rawUrl: string) {
-  const normalized = rawUrl.startsWith('//') ? `https:${rawUrl}` : rawUrl;
+  let normalized = rawUrl.startsWith('//') ? `https:${rawUrl}` : rawUrl;
+  if (normalized.startsWith('/')) {
+    normalized = `https://duckduckgo.com${normalized}`;
+  }
 
   try {
     const parsed = new URL(normalized);
@@ -348,27 +354,36 @@ function decodeDuckDuckGoUrl(rawUrl: string) {
   }
 }
 
-async function getGithubStars(url: string) {
+async function getGithubMetadata(url: string): Promise<{ stars: number | null; summary: string | null } | null> {
   const match = url.match(/github\.com\/([^/\s]+)\/([^/#?\s]+)/i);
 
   if (!match) {
     return null;
   }
 
-  const [, owner, repo] = match;
-  const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
-    headers: {
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'RoadlynLearningResearchBot/0.1',
-    },
-  });
+  const [, owner, rawRepo] = match;
+  const repo = rawRepo.replace(/\.git$/i, '');
 
-  if (!response.ok) {
+  try {
+    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'RoadlynLearningResearchBot/0.1',
+      },
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json() as { stargazers_count?: number; description?: string | null };
+    return {
+      stars: data.stargazers_count ?? null,
+      summary: data.description ?? null,
+    };
+  } catch {
     return null;
   }
-
-  const data = await response.json() as { stargazers_count?: number };
-  return data.stargazers_count ?? null;
 }
 
 async function filterAvailableResources(resources: ResearchResource[]) {
