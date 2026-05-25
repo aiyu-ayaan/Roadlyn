@@ -28,6 +28,7 @@ import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useDeleteRoadmap, useRoadmap } from '@/hooks/use-roadmaps';
+import { roadmapService } from '@/services/roadmap/roadmap-service';
 import {
   CoursePhase,
   CourseProject,
@@ -835,44 +836,89 @@ function LessonContent({
 
 function ResourcePreview({ resource }: { resource: CourseResource }) {
   const [isLoading, setIsLoading] = useState(true);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [fetchFailed, setFetchFailed] = useState(false);
   const sourceUrl = normalizeExternalUrl(resource.url);
   const shouldEmbed = sourceUrl ? canEmbedResource(resource, sourceUrl) : false;
 
   useEffect(() => {
+    if (!sourceUrl || !shouldEmbed) {
+      setIsLoading(false);
+      return;
+    }
+
+    let isMounted = true;
     setIsLoading(true);
+    setFetchFailed(false);
+    setPreviewHtml(null);
+
+    roadmapService
+      .previewResource(sourceUrl)
+      .then((data) => {
+        if (isMounted) {
+          if (data && data.html) {
+            setPreviewHtml(data.html);
+          } else {
+            setFetchFailed(true);
+          }
+          setIsLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (isMounted) {
+          console.error('Failed to fetch resource preview:', err);
+          setFetchFailed(true);
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, [sourceUrl, shouldEmbed]);
 
   return (
     <div className="border-b border-white/10 bg-background">
       <div className="flex flex-col gap-3 border-b border-white/10 bg-card/95 px-5 py-4 md:flex-row md:items-center md:justify-between">
         <div className="min-w-0">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">{resource.source}</p>
-          <h2 className="truncate text-base font-semibold">{resource.title}</h2>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-800 px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-zinc-300">
+            {resource.source}
+          </span>
+          <h2 className="mt-1 truncate text-base font-semibold text-zinc-100">{resource.title}</h2>
         </div>
         {sourceUrl ? (
-          <Button asChild variant="outline" size="sm">
-            <a href={sourceUrl} target="_blank" rel="noreferrer">
-              <ExternalLink className="size-4" />
-              Open full page
-            </a>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline" size="sm" className="border-zinc-800 bg-zinc-900/50 hover:bg-zinc-900 hover:text-white">
+              <a href={sourceUrl} target="_blank" rel="noreferrer">
+                <ExternalLink className="mr-1.5 size-4" />
+                Open original site
+              </a>
+            </Button>
+          </div>
         ) : null}
       </div>
+
       {sourceUrl && shouldEmbed ? (
-        <div className="relative h-[72vh] min-h-[560px] bg-white">
+        <>
           {isLoading ? (
-            <div className="absolute inset-0 z-10 grid place-items-center bg-card text-sm text-muted-foreground">
-              Loading full source page...
+            <div className="flex h-[72vh] min-h-[560px] flex-col items-center justify-center bg-zinc-950/30 gap-3 text-zinc-400">
+              <Loader2 className="size-8 animate-spin text-blue-500" />
+              <span className="text-sm font-medium">Securing and rendering sandboxed preview...</span>
             </div>
-          ) : null}
-          <iframe
-            title={resource.title}
-            src={sourceUrl}
-            onLoad={() => setIsLoading(false)}
-            referrerPolicy="strict-origin-when-cross-origin"
-            className="h-full w-full bg-white"
-          />
-        </div>
+          ) : fetchFailed || !previewHtml ? (
+            <ResourcePreviewFallback resource={resource} sourceUrl={sourceUrl} />
+          ) : (
+            <div className="relative h-[72vh] min-h-[560px] bg-white">
+              <iframe
+                title={resource.title}
+                srcDoc={previewHtml}
+                sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+                referrerPolicy="strict-origin-when-cross-origin"
+                className="h-full w-full bg-white border-0"
+              />
+            </div>
+          )}
+        </>
       ) : (
         <ResourcePreviewFallback resource={resource} sourceUrl={sourceUrl} />
       )}
@@ -888,22 +934,52 @@ function ResourcePreviewFallback({
   sourceUrl: string | null;
 }) {
   return (
-    <div className="grid min-h-[560px] place-items-center bg-card px-6 py-12">
-      <div className="max-w-2xl rounded-lg border border-white/10 bg-white/[0.035] p-6">
-        <p className="text-sm text-muted-foreground">{resource.source}</p>
-        <h2 className="mt-2 text-2xl font-semibold">{resource.title}</h2>
-        <p className="mt-4 text-sm leading-7 text-muted-foreground">
-          {resource.summary ?? resource.freshnessRelevance}
-        </p>
-        <p className="mt-4 break-all text-xs text-muted-foreground">{resource.url}</p>
-        {sourceUrl ? (
-          <Button asChild className="mt-6">
-            <a href={sourceUrl} target="_blank" rel="noreferrer">
-              <ExternalLink className="size-4" />
-              Open source
-            </a>
-          </Button>
-        ) : null}
+    <div className="grid min-h-[560px] place-items-center bg-zinc-950/50 px-6 py-12">
+      <div className="w-full max-w-2xl rounded-2xl border border-white/5 bg-zinc-900/40 p-8 backdrop-blur-xl shadow-2xl">
+        <div className="flex items-center gap-2.5 text-zinc-400">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-blue-400">
+            {resource.source}
+          </span>
+          <span className="text-xs text-zinc-500">•</span>
+          <span className="text-xs text-zinc-500">Secure Sandboxed Fallback</span>
+        </div>
+        
+        <h2 className="mt-4 text-2xl font-bold text-zinc-100 leading-tight">{resource.title}</h2>
+        
+        <div className="mt-6 space-y-4">
+          <div className="rounded-xl bg-white/[0.02] border border-white/5 p-5">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Resource Curation & Highlights</h4>
+            <p className="mt-2.5 text-sm leading-7 text-zinc-300">
+              {resource.summary ?? resource.freshnessRelevance}
+            </p>
+          </div>
+          
+          {resource.freshnessRelevance && resource.summary && (
+            <div className="rounded-xl bg-white/[0.02] border border-white/5 p-5">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Why it&apos;s recommended</h4>
+              <p className="mt-2.5 text-sm leading-7 text-zinc-300">
+                {resource.freshnessRelevance}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-t border-white/5 pt-6">
+          <div className="min-w-0">
+            <p className="text-xs text-zinc-500">Destination URL</p>
+            <p className="mt-1 truncate text-xs font-mono text-zinc-400 hover:text-zinc-300 transition duration-150 select-all">
+              {resource.url}
+            </p>
+          </div>
+          {sourceUrl ? (
+            <Button asChild size="lg" className="shrink-0 bg-blue-600 hover:bg-blue-500 text-white font-medium shadow-lg shadow-blue-600/15">
+              <a href={sourceUrl} target="_blank" rel="noreferrer">
+                <ExternalLink className="mr-2 size-4" />
+                Go to original site
+              </a>
+            </Button>
+          ) : null}
+        </div>
       </div>
     </div>
   );
