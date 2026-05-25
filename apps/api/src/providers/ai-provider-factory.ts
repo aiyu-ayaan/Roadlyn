@@ -80,6 +80,31 @@ export class AIProviderFactory {
     baseUrl?: string | null
   ): Promise<{ valid: boolean; error?: string }> {
     try {
+      if (providerType === 'OPENROUTER') {
+        const url = baseUrl ?? 'https://openrouter.ai/api/v1';
+        const response = await fetch(`${url.replace(/\/$/, '')}/auth/key`, {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+          },
+        });
+
+        if (response.ok) {
+          const json = await response.json() as { data?: { is_active?: boolean } };
+          if (json.data?.is_active === false) {
+            return { valid: false, error: 'OpenRouter key is inactive.' };
+          }
+          return { valid: true };
+        } else {
+          try {
+            const errJson = await response.json() as { error?: { message?: string } };
+            return { valid: false, error: errJson.error?.message ?? `OpenRouter returned status ${response.status}` };
+          } catch {
+            const text = await response.text();
+            return { valid: false, error: text || `OpenRouter returned status ${response.status}` };
+          }
+        }
+      }
+
       const { generateText } = await import('ai');
 
       // Pick a small/cheap model for validation
