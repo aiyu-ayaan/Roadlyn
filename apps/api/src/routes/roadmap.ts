@@ -1048,14 +1048,98 @@ async function fetchResourcePreview(url: string) {
     }
 
     const html = await response.text();
+    const processedHtml = await fetchAndInlineStylesheets(html, parsed);
     return {
       url: parsed.toString(),
-      title: readHtmlTitle(html) ?? parsed.hostname,
-      html: sanitizePreviewHtml(html, parsed),
+      title: readHtmlTitle(processedHtml) ?? parsed.hostname,
+      html: sanitizePreviewHtml(processedHtml, parsed),
     };
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function fetchAndInlineStylesheets(html: string, baseUrl: URL): Promise<string> {
+  const linkRegex = /<link([^>]+)>/gi;
+  const relStylesheetRegex = /rel=["']?stylesheet["']?/i;
+  const hrefRegex = /href=["']?([^"' >]+)["']?/i;
+
+  const matches = [...html.matchAll(linkRegex)];
+  const stylesheetJobs: Array<{
+    originalTag: string;
+    resolvedUrl: string;
+  }> = [];
+
+  for (const match of matches) {
+    const tagContent = match[1];
+    if (relStylesheetRegex.test(tagContent)) {
+      const hrefMatch = tagContent.match(hrefRegex);
+      if (hrefMatch && hrefMatch[1]) {
+        const href = hrefMatch[1].trim();
+        try {
+          const resolvedUrl = new URL(href, baseUrl).toString();
+          stylesheetJobs.push({
+            originalTag: match[0],
+            resolvedUrl,
+          });
+        } catch {
+          // ignore invalid URLs
+        }
+      }
+    }
+  }
+
+  if (stylesheetJobs.length === 0) {
+    return html;
+  }
+
+  // Fetch all stylesheets in parallel with a strict 2.5 second timeout
+  const cssContents = await Promise.all(
+    stylesheetJobs.map(async (job) => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2500);
+      try {
+        const res = await fetch(job.resolvedUrl, {
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; RoadlynResourcePreview/0.1)',
+            Accept: 'text/css,*/*;q=0.1',
+          },
+        });
+        if (res.ok) {
+          const text = await res.text();
+          // Escape closed style tag strings if any (very rare but good practice)
+          const sanitizedText = text.replace(/<\/style>/gi, '<\\/style>');
+          return {
+            originalTag: job.originalTag,
+            css: sanitizedText,
+            success: true,
+          };
+        }
+      } catch (err) {
+        // ignore errors
+      } finally {
+        clearTimeout(timeout);
+      }
+      return {
+        originalTag: job.originalTag,
+        css: '',
+        success: false,
+      };
+    })
+  );
+
+  let updatedHtml = html;
+  for (const result of cssContents) {
+    if (result.success && result.css) {
+      updatedHtml = updatedHtml.replace(
+        result.originalTag,
+        `<style>/* Inlined from link tag */\n${result.css}</style>`
+      );
+    }
+  }
+
+  return updatedHtml;
 }
 
 function parsePreviewUrl(url: string) {
