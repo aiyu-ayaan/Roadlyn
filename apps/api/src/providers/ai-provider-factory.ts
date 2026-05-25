@@ -143,7 +143,7 @@ export class AIProviderFactory {
       GROK: 'grok-3-mini-fast',
       MISTRAL: 'mistral-small-latest',
       TOGETHERAI: 'meta-llama/Llama-3-8b-chat-hf',
-      OPENROUTER: 'openai/gpt-4o-mini',
+      OPENROUTER: 'google/gemma-2-9b-it:free',
       OLLAMA: 'llama3',
       CUSTOM_OPENAI_COMPATIBLE: 'gpt-4o-mini',
     };
