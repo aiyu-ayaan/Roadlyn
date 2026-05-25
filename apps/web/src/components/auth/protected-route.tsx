@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { authService } from '@/services/auth/auth-service';
 import { tokenStorage } from '@/services/auth/token-storage';
 import { useAuthStore } from '@/stores/auth';
@@ -9,6 +9,7 @@ import { useAuthStore } from '@/stores/auth';
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const [mounted, setMounted] = useState(false);
   const { isAuthenticated, setUser, user } = useAuthStore((state) => ({
     isAuthenticated: state.isAuthenticated,
     setUser: state.setUser,
@@ -16,6 +17,12 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }));
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+
     if (!isAuthenticated && !tokenStorage.getAccessToken()) {
       router.replace(`/login?next=${encodeURIComponent(pathname)}`);
     }
@@ -23,7 +30,11 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     if (!user && tokenStorage.getAccessToken()) {
       authService.me().then(setUser).catch(() => setUser(null));
     }
-  }, [isAuthenticated, pathname, router, setUser, user]);
+  }, [isAuthenticated, pathname, router, setUser, user, mounted]);
+
+  if (!mounted) {
+    return null;
+  }
 
   if (!isAuthenticated && !tokenStorage.getAccessToken()) {
     return null;
