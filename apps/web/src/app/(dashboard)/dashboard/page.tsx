@@ -3,196 +3,406 @@
 import Link from 'next/link';
 import {
   ArrowRight,
+  BookOpen,
   Brain,
+  Calendar,
   Code2,
+  GraduationCap,
   Layers3,
-  Search,
+  Loader2,
+  Lock,
+  PlayCircle,
+  Plus,
   Sparkles,
+  Trash2,
   TrendingUp,
-  Zap,
+  Users,
 } from 'lucide-react';
-import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Progress } from '@/components/ui/progress';
+import { Switch } from '@/components/ui/switch';
+import { useAuthStore } from '@/stores/auth';
 import { useProviderKeys, useProviders } from '@/hooks/use-ai';
-import { useRoadmaps } from '@/hooks/use-roadmaps';
+import {
+  useDeleteRoadmap,
+  useRoadmaps,
+  useUnenrollRoadmap,
+  useUpdateRoadmapVisibility,
+} from '@/hooks/use-roadmaps';
 import { useRealtime } from '@/hooks/use-realtime';
 import { useRealtimeStore } from '@/stores/realtime';
 
 export default function DashboardPage() {
   useRealtime();
+  const user = useAuthStore((state) => state.user);
   const providers = useProviders();
   const keys = useProviderKeys();
   const roadmaps = useRoadmaps();
   const events = useRealtimeStore((state) => state.events);
+  
+  const deleteRoadmap = useDeleteRoadmap();
+  const unenrollRoadmap = useUnenrollRoadmap();
+  const updateVisibility = useUpdateRoadmapVisibility();
+
+  // Statistics calculations
   const enabledProviders = providers.data?.filter((provider) => provider.enabled).length ?? 0;
   const modelCount = providers.data?.reduce((total, provider) => total + (provider.models?.length ?? 0), 0) ?? 0;
+  
+  const totalRoadmaps = roadmaps.data?.length ?? 0;
+  const completedRoadmaps = roadmaps.data?.filter((r) => r.progress === 100).length ?? 0;
+  
+  const generatedRoadmaps = (roadmaps.data ?? []).filter(
+    (roadmap) => roadmap.source !== 'enrolled'
+  );
+  const savedPublicRoadmaps = (roadmaps.data ?? []).filter(
+    (roadmap) => roadmap.source === 'enrolled'
+  );
+
+  // Gradient selection for course card cover previews
+  const cardGradients = [
+    'from-blue-600/30 to-violet-600/30 border-blue-500/20',
+    'from-purple-600/30 to-pink-600/30 border-purple-500/20',
+    'from-emerald-600/30 to-teal-600/30 border-emerald-500/20',
+    'from-amber-600/30 to-orange-600/30 border-amber-500/20',
+    'from-rose-600/30 to-red-600/30 border-rose-500/20',
+  ];
+
+  const handleVisibilityToggle = async (id: string, currentVisibility: 'PRIVATE' | 'PUBLIC') => {
+    const nextVisibility = currentVisibility === 'PUBLIC' ? 'PRIVATE' : 'PUBLIC';
+    await updateVisibility.mutateAsync({ id, visibility: nextVisibility });
+  };
+
+  const handleRoadmapDelete = async (id: string, isEnrolled: boolean) => {
+    const confirmMessage = isEnrolled
+      ? 'Remove this course from your bookshelf?'
+      : 'Delete this generated course? This cannot be undone.';
+      
+    if (!window.confirm(confirmMessage)) return;
+
+    if (isEnrolled) {
+      await unenrollRoadmap.mutateAsync(id);
+    } else {
+      await deleteRoadmap.mutateAsync(id);
+    }
+  };
+
+  const isMutatingVisibility = updateVisibility.isPending;
+  const visibilityMutatingId = updateVisibility.variables?.id;
+
+  const isMutatingDeletion = deleteRoadmap.isPending || unenrollRoadmap.isPending;
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Roadlyn"
-        description="An AI-native learning cockpit that turns live web data, repositories, videos, docs, and models into personalized roadmaps."
-        action={
-          <Button asChild>
+    <div className="space-y-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold tracking-wider text-primary uppercase">
+            Learning Cockpit
+          </p>
+          <h1 className="text-4xl font-extrabold tracking-tight md:text-5xl text-white">
+            Welcome back, <span className="gradient-text">{user?.name ?? 'Learner'}</span>
+          </h1>
+          <p className="mt-2 text-sm text-muted-foreground max-w-2xl">
+            Here is your personalized roadmap bookshelf. Track your progress, toggle public visibility, or jump back into learning paths.
+          </p>
+        </div>
+        <div className="flex shrink-0 gap-3">
+          <Button asChild className="rounded-full bg-gradient-to-r from-blue-600 to-violet-600 text-white border-0 shadow-lg shadow-blue-500/10 hover:shadow-blue-500/20 transition-all hover:scale-105 active:scale-95">
             <Link href="/roadmaps/generate">
-              <Sparkles />
-              Generate roadmap
+              <Plus className="mr-1.5 size-4" />
+              New roadmap
             </Link>
           </Button>
-        }
-      />
-
-      <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.055] p-5 shadow-2xl shadow-black/20 md:p-8">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(59,130,246,0.24),transparent_34rem),radial-gradient(circle_at_80%_10%,rgba(168,85,247,0.22),transparent_28rem)]" />
-        <div className="relative grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
-          <div>
-            <Badge className="border-blue-400/20 bg-blue-500/10 text-blue-200" variant="outline">
-              <Zap className="mr-1 size-3" />
-              Live AI roadmap engine
-            </Badge>
-            <h2 className="mt-5 max-w-3xl text-4xl font-semibold tracking-normal text-white md:text-6xl">
-              What do you want to learn today?
-            </h2>
-            <div className="ai-glow mt-7 flex items-center gap-3 rounded-2xl border border-white/10 bg-black/45 p-3 backdrop-blur-xl">
-              <Search className="ml-2 size-5 text-blue-200" />
-              <Input
-                className="h-14 border-0 bg-transparent text-base shadow-none focus-visible:ring-0"
-                placeholder="What do you want to learn today?"
-              />
-              <Button size="lg">
-                <Sparkles />
-                Ask AI
-              </Button>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Badge variant="outline" className="border-white/10">
-                Uses live web search
-              </Badge>
-              <Badge variant="outline" className="border-white/10">
-                Current docs, videos, repos, and articles
-              </Badge>
-              <Badge variant="outline" className="border-white/10">
-                Powered by your default provider
-              </Badge>
-            </div>
-          </div>
-
-          <Card className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">AI Roadmap Generator</p>
-                <h3 className="mt-1 text-xl font-semibold">Personalize the next path</h3>
-              </div>
-              <Brain className="size-6 text-blue-300" />
-            </div>
-            <div className="mt-5 space-y-3">
-              <Input placeholder="Topic, role, or skill" />
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Select defaultValue="intermediate">
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="beginner">Beginner</SelectItem>
-                    <SelectItem value="intermediate">Intermediate</SelectItem>
-                    <SelectItem value="advanced">Advanced</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select defaultValue="8">
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="4">4 hrs / week</SelectItem>
-                    <SelectItem value="8">8 hrs / week</SelectItem>
-                    <SelectItem value="12">12 hrs / week</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Select defaultValue={providers.data?.[0]?.id ?? 'auto'}>
-                <SelectTrigger><SelectValue placeholder="AI provider" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="auto">Auto select best model</SelectItem>
-                  {(providers.data ?? []).map((provider) => (
-                    <SelectItem key={provider.id} value={provider.id}>{provider.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button className="w-full" asChild>
-                <Link href="/roadmaps/generate">
-                  Generate roadmap
-                  <ArrowRight />
-                </Link>
-              </Button>
-            </div>
-          </Card>
+          <Button variant="outline" asChild className="rounded-full border-white/10 hover:bg-white/5">
+            <Link href="/discover">
+              <Users className="mr-1.5 size-4" />
+              Discover public
+            </Link>
+          </Button>
         </div>
-      </section>
+      </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      {/* Analytics stats cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {[
-          { label: 'Roadmaps', value: roadmaps.data?.length ?? 0, icon: Layers3 },
-          { label: 'Providers', value: enabledProviders, icon: Brain },
-          { label: 'Models', value: modelCount, icon: Sparkles },
-          { label: 'Keys', value: keys.data?.length ?? 0, icon: Code2 },
-          { label: 'Live events', value: events.length, icon: TrendingUp },
+          { label: 'Total Roadmaps', value: totalRoadmaps, sub: `${completedRoadmaps} completed`, icon: Layers3 },
+          { label: 'Active Providers', value: enabledProviders, sub: 'AI Gateway routing', icon: Brain },
+          { label: 'AI Models Ready', value: modelCount, sub: 'Multi-provider stack', icon: Sparkles },
+          { label: 'Decrypted Keys', value: keys.data?.length ?? 0, sub: 'Admin credentials', icon: Code2 },
+          { label: 'Live Events', value: events.length, sub: 'Websocket connection', icon: TrendingUp },
         ].map((item) => {
           const Icon = item.icon;
           return (
-            <Card key={item.label} className="p-5 transition hover:-translate-y-0.5 hover:border-blue-400/30">
+            <Card key={item.label} className="p-5 transition-all duration-300 hover:-translate-y-1 hover:border-blue-500/20 bg-white/[0.02] border-white/5">
               <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">{item.label}</p>
-                <Icon className="size-4 text-blue-300" />
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{item.label}</p>
+                <Icon className="size-4 text-blue-400" />
               </div>
-              <p className="mt-3 text-3xl font-semibold">{item.value}</p>
+              <p className="mt-3 text-3xl font-bold text-white tracking-tight">{item.value}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{item.sub}</p>
             </Card>
           );
         })}
       </div>
 
-      <section className="grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
-        <Card className="p-5">
-          <div className="mb-5 flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-semibold">Your generated courses</h3>
-              <p className="text-sm text-muted-foreground">Create a roadmap to populate this workspace with your own modules and resources.</p>
-            </div>
-            <Button variant="outline" asChild>
-              <Link href="/roadmaps/generate">Create</Link>
-            </Button>
-          </div>
-          <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-6 text-sm text-muted-foreground">
-            {roadmaps.isLoading
-              ? 'Loading your roadmaps...'
-              : roadmaps.data?.length
-                ? `${roadmaps.data.length} roadmap${roadmaps.data.length === 1 ? '' : 's'} ready.`
-                : 'No roadmaps yet. Generate your first live-researched course to get started.'}
+      {/* Central shelf/cards */}
+      {roadmaps.isLoading ? (
+        <Card className="flex min-h-[22rem] items-center justify-center p-8 border-dashed border-white/10 bg-black/10">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="size-8 animate-spin text-blue-400" />
+            <p className="text-sm text-muted-foreground">Loading your learning shelf...</p>
           </div>
         </Card>
+      ) : roadmaps.data?.length ? (
+        <div className="space-y-10">
+          
+          {/* Section 1: Generated Roadmaps */}
+          {generatedRoadmaps.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold tracking-tight text-white">Your Generated Roadmaps</h2>
+                  <p className="text-xs text-muted-foreground">Courses you built through background AI research. Toggle public visibility to list them in discovery.</p>
+                </div>
+                <Badge variant="outline" className="border-blue-500/20 bg-blue-500/5 text-blue-300 rounded-full px-3 py-1 font-medium">
+                  {generatedRoadmaps.length} course{generatedRoadmaps.length === 1 ? '' : 's'}
+                </Badge>
+              </div>
 
-        <Card className="p-5">
-          <div className="mb-5 flex items-center justify-between">
-            <h3 className="text-lg font-semibold">AI setup</h3>
-            <Badge variant={enabledProviders > 0 ? 'success' : 'outline'}>
-              {enabledProviders > 0 ? 'Ready' : 'Needs provider'}
-            </Badge>
-          </div>
-          <div className="space-y-3 text-sm">
-            <div className="flex gap-3 rounded-2xl border border-white/10 bg-black/20 p-3">
-              <Sparkles className="mt-0.5 size-4 shrink-0 text-violet-300" />
-              <p className="text-muted-foreground">
-                Roadlyn will use the platform default provider unless you choose a provider and model while generating.
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {generatedRoadmaps.map((roadmap, index) => {
+                  const gradientClass = cardGradients[index % cardGradients.length];
+                  const isPublic = roadmap.visibility === 'PUBLIC';
+                  const isProcessing = roadmap.status === 'QUEUED' || roadmap.status === 'RUNNING';
+                  const isSavingVis = isMutatingVisibility && visibilityMutatingId === roadmap.id;
+
+                  return (
+                    <Card
+                      key={roadmap.id}
+                      className="group flex flex-col overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-blue-950/10 hover:border-blue-500/30 hover:-translate-y-1.5 bg-card/60 border-white/5"
+                    >
+                      {/* Course top preview visual cover */}
+                      <div className={`relative h-28 w-full bg-gradient-to-r ${gradientClass} flex items-center justify-center border-b`}>
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(255,255,255,0.05),transparent)] pointer-events-none" />
+                        <div className="absolute top-3 left-3 flex gap-2">
+                          {isPublic ? (
+                            <Badge variant="success" className="bg-emerald-500/10 text-emerald-300 border-emerald-500/20 flex items-center gap-1 py-0.5 px-2">
+                              <Sparkles className="size-2.5" /> Public
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="bg-zinc-800 text-zinc-300 border-zinc-700/50 flex items-center gap-1 py-0.5 px-2">
+                              <Lock className="size-2.5" /> Private
+                            </Badge>
+                          )}
+                          {isProcessing && (
+                            <Badge variant="outline" className="bg-blue-500/10 text-blue-300 border-blue-400/20 flex items-center gap-1 animate-pulse">
+                              <Loader2 className="size-2.5 animate-spin" /> {roadmap.status.toLowerCase()}
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        <GraduationCap className="size-10 text-white/40 transform transition-transform group-hover:scale-110 duration-300" />
+                      </div>
+
+                      <div className="flex flex-col flex-1 p-5 space-y-4">
+                        {/* Course Header */}
+                        <div>
+                          <p className="text-xs font-semibold text-blue-400 uppercase tracking-wider">
+                            {roadmap.topic ?? 'Personalized Path'}
+                          </p>
+                          <h3 className="mt-1 line-clamp-2 text-lg font-bold text-white tracking-tight leading-snug group-hover:text-blue-300 transition-colors duration-200">
+                            {roadmap.title}
+                          </h3>
+                        </div>
+
+                        {/* Progress */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <span className="font-semibold">{roadmap.progress}% completed</span>
+                            <span>{roadmap.status.toLowerCase()}</span>
+                          </div>
+                          <Progress value={roadmap.progress} className="h-1.5 bg-zinc-800" />
+                        </div>
+
+                        {/* Metadata details */}
+                        <div className="grid grid-cols-2 gap-y-2 pt-2 text-xs text-muted-foreground border-t border-white/5">
+                          <div className="flex items-center gap-1.5">
+                            <Calendar className="size-3 text-muted-foreground" />
+                            <span>{new Date(roadmap.createdAt).toLocaleDateString()}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 justify-end">
+                            <Users className="size-3 text-muted-foreground" />
+                            <span>{roadmap.enrollmentCount ?? 0} learner{(roadmap.enrollmentCount ?? 0) === 1 ? '' : 's'}</span>
+                          </div>
+                        </div>
+
+                        {/* Action controllers */}
+                        <div className="flex flex-col gap-3 pt-3 mt-auto border-t border-white/5">
+                          <div className="flex items-center justify-between bg-white/[0.02] border border-white/5 rounded-xl px-3 py-2 text-xs">
+                            <span className="font-medium text-white flex items-center gap-1.5">
+                              {isPublic ? <Sparkles className="size-3.5 text-blue-400" /> : <Lock className="size-3.5 text-zinc-400" />}
+                              {isSavingVis ? 'Saving…' : isPublic ? 'Public course' : 'Private shelf'}
+                            </span>
+                            <Switch
+                              checked={isPublic}
+                              disabled={isProcessing || isSavingVis}
+                              onCheckedChange={() => handleVisibilityToggle(roadmap.id, (roadmap.visibility as 'PRIVATE' | 'PUBLIC') ?? 'PRIVATE')}
+                            />
+                          </div>
+
+                          <div className="flex gap-2">
+                            <Button size="sm" asChild className="flex-1 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-500 hover:to-violet-500 text-white font-medium shadow-md shadow-blue-500/10">
+                              <Link href={`/roadmaps/${roadmap.id}`}>
+                                Start learning
+                                <ArrowRight className="ml-1 size-3.5" />
+                              </Link>
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="rounded-xl border-white/10 text-muted-foreground hover:text-red-400 hover:bg-red-500/5 hover:border-red-500/20 shrink-0"
+                              disabled={isMutatingDeletion}
+                              onClick={() => handleRoadmapDelete(roadmap.id, false)}
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Section 2: Enrolled Public Roadmaps */}
+          {savedPublicRoadmaps.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border-t border-white/5 pt-8">
+                <div>
+                  <h2 className="text-2xl font-bold tracking-tight text-white">Public Shelf Shelf</h2>
+                  <p className="text-xs text-muted-foreground">Courses added from the community discovery page.</p>
+                </div>
+                <Badge variant="outline" className="border-violet-500/20 bg-violet-500/5 text-violet-300 rounded-full px-3 py-1 font-medium">
+                  {savedPublicRoadmaps.length} course{savedPublicRoadmaps.length === 1 ? '' : 's'}
+                </Badge>
+              </div>
+
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {savedPublicRoadmaps.map((roadmap, index) => {
+                  const gradientClass = cardGradients[(index + 2) % cardGradients.length];
+
+                  return (
+                    <Card
+                      key={roadmap.id}
+                      className="group flex flex-col overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-violet-950/10 hover:border-violet-500/30 hover:-translate-y-1.5 bg-card/60 border-white/5"
+                    >
+                      {/* Cover preview image */}
+                      <div className={`relative h-28 w-full bg-gradient-to-r ${gradientClass} flex items-center justify-center border-b`}>
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(255,255,255,0.05),transparent)] pointer-events-none" />
+                        <div className="absolute top-3 left-3">
+                          <Badge variant="success" className="bg-violet-500/10 text-violet-300 border-violet-500/20 flex items-center gap-1 py-0.5 px-2">
+                            <Users className="size-2.5" /> Enrolled Shelf
+                          </Badge>
+                        </div>
+                        <PlayCircle className="size-10 text-white/40 transform transition-transform group-hover:scale-110 duration-300" />
+                      </div>
+
+                      <div className="flex flex-col flex-1 p-5 space-y-4">
+                        {/* Title details */}
+                        <div>
+                          <p className="text-xs font-semibold text-violet-400 uppercase tracking-wider">
+                            {roadmap.topic ?? 'Community course'}
+                          </p>
+                          <h3 className="mt-1 line-clamp-2 text-lg font-bold text-white tracking-tight leading-snug group-hover:text-violet-300 transition-colors duration-200">
+                            {roadmap.title}
+                          </h3>
+                        </div>
+
+                        {/* Progress */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <span className="font-semibold">{roadmap.progress}% completed</span>
+                            <span>active</span>
+                          </div>
+                          <Progress value={roadmap.progress} className="h-1.5 bg-zinc-800" />
+                        </div>
+
+                        {/* Meta indicators */}
+                        <div className="space-y-1 pt-2 text-xs text-muted-foreground border-t border-white/5">
+                          <div className="flex items-center justify-between">
+                            <span className="flex items-center gap-1.5">
+                              <Calendar className="size-3 text-muted-foreground" />
+                              Added: {new Date(roadmap.createdAt).toLocaleDateString()}
+                            </span>
+                            <span>{roadmap.enrollmentCount ?? 0} active</span>
+                          </div>
+                          <p className="text-muted-foreground/80 line-clamp-1 italic text-[11px] mt-1">
+                            By {roadmap.ownerName ?? roadmap.ownerEmail ?? 'Roadlyn author'}
+                          </p>
+                        </div>
+
+                        {/* Footer buttons */}
+                        <div className="flex gap-2 pt-3 mt-auto border-t border-white/5">
+                          <Button size="sm" asChild className="flex-1 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-medium shadow-md shadow-violet-500/10">
+                            <Link href={`/roadmaps/${roadmap.id}`}>
+                              Start learning
+                              <ArrowRight className="ml-1 size-3.5" />
+                            </Link>
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="rounded-xl border-white/10 text-muted-foreground hover:text-red-400 hover:bg-red-500/5 hover:border-red-500/20 shrink-0"
+                            disabled={isMutatingDeletion}
+                            onClick={() => handleRoadmapDelete(roadmap.id, true)}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+        </div>
+      ) : (
+        /* Empty State with premium visuals */
+        <Card className="relative overflow-hidden flex min-h-[26rem] flex-col items-center justify-center p-8 text-center bg-white/[0.01] border-dashed border-white/10 rounded-3xl">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(59,130,246,0.06),transparent_22rem)]" />
+          
+          <div className="relative flex flex-col items-center max-w-lg space-y-5">
+            <span className="ai-glow flex size-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-violet-500 shadow-xl shadow-blue-500/20 animate-pulse">
+              <BookOpen className="size-7 text-white" />
+            </span>
+            <div className="space-y-2">
+              <h2 className="text-2xl font-bold tracking-tight text-white">Your Learning Shelf is Empty</h2>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                You haven&apos;t generated any roadmap courses or enrolled in public pathways yet. Start research on the topic you want to learn to build your first tailored syllabus!
               </p>
             </div>
-            <div className="flex gap-3 rounded-2xl border border-white/10 bg-black/20 p-3">
-              <Search className="mt-0.5 size-4 shrink-0 text-blue-300" />
-              <p className="text-muted-foreground">
-                Every course generation searches the live web before creating modules, projects, resources, and interview prep.
-              </p>
+            
+            <div className="flex flex-col sm:flex-row gap-3 pt-3 justify-center w-full max-w-xs">
+              <Button asChild className="rounded-full bg-gradient-to-r from-blue-600 to-violet-600 text-white font-semibold border-0 shadow-lg shadow-blue-500/20 transition-transform active:scale-95">
+                <Link href="/roadmaps/generate">
+                  <Plus className="mr-1.5 size-4" />
+                  Generate course
+                </Link>
+              </Button>
+              <Button variant="outline" asChild className="rounded-full border-white/10 hover:bg-white/5">
+                <Link href="/discover">
+                  Discover public
+                </Link>
+              </Button>
             </div>
           </div>
         </Card>
-      </section>
+      )}
     </div>
   );
 }
