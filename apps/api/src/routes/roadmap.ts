@@ -179,16 +179,27 @@ export async function roadmapRoutes(fastify: FastifyInstance) {
   fastify.get(
     '/roadmaps/:id',
     {
-      preHandler: requireScope('ai:read'),
       schema: {
         tags: ['Roadmaps'],
         summary: 'Get a generated roadmap course',
-        security: [{ bearerAuth: [] }],
       },
     },
     async (request) => {
-      if (!request.auth?.userId) {
-        throw new ApiError(403, 'USER_SESSION_REQUIRED', 'Roadmap details require a user session');
+      let userId: string | null = null;
+      try {
+        const payload = await request.jwtVerify<{
+          clientId?: string;
+          userId?: string;
+          scopes?: string[];
+        }>();
+        request.auth = {
+          clientId: payload.clientId,
+          userId: payload.userId,
+          scopes: payload.scopes ?? [],
+        };
+        userId = payload.userId ?? null;
+      } catch (err) {
+        // Guest access allows viewing public roadmaps
       }
 
       const params = z.object({ id: z.string().min(1) }).parse(request.params);
@@ -221,7 +232,7 @@ export async function roadmapRoutes(fastify: FastifyInstance) {
          )
        LIMIT 1`,
         params.id,
-        request.auth.userId
+        userId
       );
 
       if (!roadmap) {

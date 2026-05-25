@@ -1,21 +1,22 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowRight,
   BookOpen,
   Brain,
   Calendar,
-  Code2,
+  Check,
   GraduationCap,
   Layers3,
   Loader2,
   Lock,
   PlayCircle,
   Plus,
+  Share2,
   Sparkles,
   Trash2,
-  TrendingUp,
   Users,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -24,7 +25,6 @@ import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
 import { useAuthStore } from '@/stores/auth';
-import { useProviderKeys, useProviders } from '@/hooks/use-ai';
 import {
   useDeleteRoadmap,
   useRoadmaps,
@@ -32,26 +32,30 @@ import {
   useUpdateRoadmapVisibility,
 } from '@/hooks/use-roadmaps';
 import { useRealtime } from '@/hooks/use-realtime';
-import { useRealtimeStore } from '@/stores/realtime';
 
 export default function DashboardPage() {
   useRealtime();
   const user = useAuthStore((state) => state.user);
-  const providers = useProviders();
-  const keys = useProviderKeys();
   const roadmaps = useRoadmaps();
-  const events = useRealtimeStore((state) => state.events);
   
   const deleteRoadmap = useDeleteRoadmap();
   const unenrollRoadmap = useUnenrollRoadmap();
   const updateVisibility = useUpdateRoadmapVisibility();
 
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleShare = (id: string, slug?: string | null) => {
+    const slugSuffix = slug ? `/${slug}` : '';
+    const shareUrl = `${window.location.origin}/roadmaps/${id}${slugSuffix}`;
+    void navigator.clipboard.writeText(shareUrl);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
   // Statistics calculations
-  const enabledProviders = providers.data?.filter((provider) => provider.enabled).length ?? 0;
-  const modelCount = providers.data?.reduce((total, provider) => total + (provider.models?.length ?? 0), 0) ?? 0;
-  
   const totalRoadmaps = roadmaps.data?.length ?? 0;
   const completedRoadmaps = roadmaps.data?.filter((r) => r.progress === 100).length ?? 0;
+  const inProgressRoadmaps = roadmaps.data?.filter((r) => r.progress > 0 && r.progress < 100).length ?? 0;
   
   const generatedRoadmaps = (roadmaps.data ?? []).filter(
     (roadmap) => roadmap.source !== 'enrolled'
@@ -59,6 +63,9 @@ export default function DashboardPage() {
   const savedPublicRoadmaps = (roadmaps.data ?? []).filter(
     (roadmap) => roadmap.source === 'enrolled'
   );
+
+  const generatedCount = generatedRoadmaps.length;
+  const savedPublicCount = savedPublicRoadmaps.length;
 
   // Gradient selection for course card cover previews
   const cardGradients = [
@@ -126,11 +133,11 @@ export default function DashboardPage() {
       {/* Analytics stats cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {[
-          { label: 'Total Roadmaps', value: totalRoadmaps, sub: `${completedRoadmaps} completed`, icon: Layers3 },
-          { label: 'Active Providers', value: enabledProviders, sub: 'AI Gateway routing', icon: Brain },
-          { label: 'AI Models Ready', value: modelCount, sub: 'Multi-provider stack', icon: Sparkles },
-          { label: 'Decrypted Keys', value: keys.data?.length ?? 0, sub: 'Admin credentials', icon: Code2 },
-          { label: 'Live Events', value: events.length, sub: 'Websocket connection', icon: TrendingUp },
+          { label: 'Courses on Shelf', value: totalRoadmaps, sub: 'Total saved paths', icon: Layers3 },
+          { label: 'Completed Paths', value: completedRoadmaps, sub: '100% progress tracks', icon: GraduationCap },
+          { label: 'Active Tracks', value: inProgressRoadmaps, sub: 'Currently studying', icon: PlayCircle },
+          { label: 'Generated Paths', value: generatedCount, sub: 'Custom AI courses', icon: Brain },
+          { label: 'Enrolled Shelf', value: savedPublicCount, sub: 'Added from community', icon: Users },
         ].map((item) => {
           const Icon = item.icon;
           return (
@@ -258,6 +265,20 @@ export default function DashboardPage() {
                                 <ArrowRight className="ml-1 size-3.5" />
                               </Link>
                             </Button>
+                            {isPublic && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="rounded-xl border-white/10 text-muted-foreground hover:text-blue-400 hover:bg-blue-500/5 hover:border-blue-500/20 shrink-0"
+                                onClick={() => handleShare(roadmap.id, roadmap.slug)}
+                              >
+                                {copiedId === roadmap.id ? (
+                                  <Check className="size-4 text-emerald-400" />
+                                ) : (
+                                  <Share2 className="size-4" />
+                                )}
+                              </Button>
+                            )}
                             <Button
                               size="sm"
                               variant="outline"
@@ -352,6 +373,20 @@ export default function DashboardPage() {
                               <ArrowRight className="ml-1 size-3.5" />
                             </Link>
                           </Button>
+                          {roadmap.visibility === 'PUBLIC' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="rounded-xl border-white/10 text-muted-foreground hover:text-violet-400 hover:bg-violet-500/5 hover:border-violet-500/20 shrink-0"
+                              onClick={() => handleShare(roadmap.id, roadmap.slug)}
+                            >
+                              {copiedId === roadmap.id ? (
+                                <Check className="size-4 text-emerald-400" />
+                              ) : (
+                                <Share2 className="size-4" />
+                              )}
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="outline"

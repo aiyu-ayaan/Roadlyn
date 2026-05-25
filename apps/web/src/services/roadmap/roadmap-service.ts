@@ -16,6 +16,7 @@ export interface RoadmapSummary {
   status: RoadmapStatus;
   progress: number;
   visibility?: 'PRIVATE' | 'PUBLIC' | string;
+  slug?: string | null;
   ownerName?: string | null;
   ownerEmail?: string | null;
   enrollmentCount?: number;

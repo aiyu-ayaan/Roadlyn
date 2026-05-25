@@ -23,7 +23,12 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!mounted) return;
 
-    if (!isAuthenticated && !tokenStorage.getAccessToken()) {
+    const isPublicRoadmapRoute =
+      pathname.startsWith('/roadmaps/') &&
+      pathname !== '/roadmaps' &&
+      pathname !== '/roadmaps/generate';
+
+    if (!isAuthenticated && !tokenStorage.getAccessToken() && !isPublicRoadmapRoute) {
       router.replace(`/login?next=${encodeURIComponent(pathname)}`);
     }
 
@@ -36,7 +41,12 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return null;
   }
 
-  if (!isAuthenticated && !tokenStorage.getAccessToken()) {
+  const isPublicRoadmapRoute =
+    pathname.startsWith('/roadmaps/') &&
+    pathname !== '/roadmaps' &&
+    pathname !== '/roadmaps/generate';
+
+  if (!isAuthenticated && !tokenStorage.getAccessToken() && !isPublicRoadmapRoute) {
     return null;
   }
 
