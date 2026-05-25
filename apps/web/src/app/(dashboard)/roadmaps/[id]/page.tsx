@@ -45,6 +45,34 @@ type CourseItem =
       resource?: never;
     }
   | {
+      type: 'study-guide';
+      title: string;
+      detail: string;
+      content: string;
+      resource?: never;
+    }
+  | {
+      type: 'hands-on-lab';
+      title: string;
+      detail: string;
+      content: string;
+      resource?: never;
+    }
+  | {
+      type: 'cheat-sheet';
+      title: string;
+      detail: string;
+      content: string;
+      resource?: never;
+    }
+  | {
+      type: 'flashcards';
+      title: string;
+      detail: string;
+      cards: Array<{ front: string; back: string }>;
+      resource?: never;
+    }
+  | {
       type: 'resource';
       title: string;
       detail: string;
@@ -480,6 +508,12 @@ function CoursePlayer({
   const embedUrl = item?.type === 'resource' ? getEmbedUrl(item.resource.url) : null;
   const isVideo = item?.type === 'resource' && item.resource.kind === 'youtube';
 
+  const isCustomAsset =
+    item?.type === 'study-guide' ||
+    item?.type === 'hands-on-lab' ||
+    item?.type === 'cheat-sheet' ||
+    item?.type === 'flashcards';
+
   return (
     <div className="flex flex-col">
       {item?.type === 'resource' ? (
@@ -509,13 +543,200 @@ function CoursePlayer({
             <h1 className="mt-4 text-4xl font-bold">
               {item?.title ?? phase?.title ?? course.title}
             </h1>
-            <p className="mt-4 text-base leading-7 text-muted-foreground">
-              {phase?.description ?? course.overview}
-            </p>
+            {!isCustomAsset && (
+              <p className="mt-4 text-base leading-7 text-muted-foreground">
+                {phase?.description ?? course.overview}
+              </p>
+            )}
             <LessonContent item={item} course={course} phase={phase} />
           </div>
         </article>
       )}
+    </div>
+  );
+}
+
+function MarkdownViewer({ content }: { content: string }) {
+  if (!content) return null;
+
+  const lines = content.split('\n');
+  let isCodeBlock = false;
+  let codeLines: string[] = [];
+  const renderedElements: React.ReactNode[] = [];
+
+  lines.forEach((line, idx) => {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith('```')) {
+      if (isCodeBlock) {
+        isCodeBlock = false;
+        renderedElements.push(
+          <pre key={`code-${idx}`} className="my-4 overflow-x-auto rounded-lg bg-zinc-950 p-4 border border-white/5 text-sm text-zinc-300 font-mono leading-relaxed">
+            <code>{codeLines.join('\n')}</code>
+          </pre>
+        );
+        codeLines = [];
+      } else {
+        isCodeBlock = true;
+      }
+      return;
+    }
+
+    if (isCodeBlock) {
+      codeLines.push(line);
+      return;
+    }
+
+    if (trimmed.startsWith('# ')) {
+      renderedElements.push(
+        <h1 key={`h1-${idx}`} className="mt-6 mb-4 text-3xl font-bold text-zinc-100 border-b border-white/10 pb-2">
+          {trimmed.slice(2)}
+        </h1>
+      );
+      return;
+    }
+
+    if (trimmed.startsWith('## ')) {
+      renderedElements.push(
+        <h2 key={`h2-${idx}`} className="mt-5 mb-3 text-2xl font-semibold text-zinc-200">
+          {trimmed.slice(3)}
+        </h2>
+      );
+      return;
+    }
+
+    if (trimmed.startsWith('### ')) {
+      renderedElements.push(
+        <h3 key={`h3-${idx}`} className="mt-4 mb-2 text-xl font-semibold text-zinc-300">
+          {trimmed.slice(4)}
+        </h3>
+      );
+      return;
+    }
+
+    if (trimmed.startsWith('- [ ] ') || trimmed.startsWith('- [x] ')) {
+      const isChecked = trimmed.startsWith('- [x] ');
+      renderedElements.push(
+        <label key={`check-${idx}`} className="flex items-start gap-3 my-2 cursor-pointer text-zinc-300 hover:text-white transition">
+          <input type="checkbox" defaultChecked={isChecked} readOnly className="mt-1 size-4 rounded bg-zinc-900 border-white/10 text-blue-500" />
+          <span className="text-base leading-6">{trimmed.slice(6)}</span>
+        </label>
+      );
+      return;
+    }
+
+    if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      renderedElements.push(
+        <li key={`li-${idx}`} className="my-1.5 ml-6 list-disc text-zinc-300 leading-7">
+          {trimmed.slice(2)}
+        </li>
+      );
+      return;
+    }
+
+    if (trimmed === '') {
+      renderedElements.push(<div key={`space-${idx}`} className="h-2" />);
+      return;
+    }
+
+    renderedElements.push(
+      <p key={`p-${idx}`} className="my-2.5 text-base leading-7 text-zinc-400">
+        {trimmed}
+      </p>
+    );
+  });
+
+  return <div className="space-y-1">{renderedElements}</div>;
+}
+
+function FlashcardDeck({ cards }: { cards: Array<{ front: string; back: string }> }) {
+  const [index, setIndex] = useState(0);
+  const [isFlipped, setIsFlipped] = useState(false);
+
+  if (!cards || cards.length === 0) {
+    return <div className="text-sm text-muted-foreground">No flashcards available.</div>;
+  }
+
+  const card = cards[index];
+
+  return (
+    <div className="mt-8 flex flex-col items-center justify-center space-y-6">
+      <div 
+        onClick={() => setIsFlipped(!isFlipped)}
+        className="relative w-full max-w-lg h-72 cursor-pointer"
+        style={{ perspective: '1000px' }}
+      >
+        <div 
+          className="relative w-full h-full duration-500 transition-transform"
+          style={{ 
+            transformStyle: 'preserve-3d',
+            transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)'
+          }}
+        >
+          {/* Front Side */}
+          <Card 
+            className="absolute inset-0 flex flex-col items-center justify-center p-8 bg-zinc-900 border border-white/10 rounded-2xl shadow-xl hover:border-zinc-700 transition"
+            style={{ 
+              backfaceVisibility: 'hidden',
+              WebkitBackfaceVisibility: 'hidden'
+            }}
+          >
+            <Badge className="absolute top-4 left-4" variant="secondary">Question</Badge>
+            <p className="text-xl font-medium text-center text-zinc-100 leading-8 select-none">
+              {card.front}
+            </p>
+            <span className="absolute bottom-4 text-xs text-muted-foreground select-none animate-pulse">
+              Click card to reveal answer
+            </span>
+          </Card>
+          
+          {/* Back Side */}
+          <Card 
+            className="absolute inset-0 flex flex-col items-center justify-center p-8 bg-gradient-to-br from-indigo-950 to-blue-950 border border-blue-500/20 rounded-2xl shadow-xl"
+            style={{ 
+              backfaceVisibility: 'hidden',
+              WebkitBackfaceVisibility: 'hidden',
+              transform: 'rotateY(180deg)'
+            }}
+          >
+            <Badge className="absolute top-4 left-4" variant="success">Answer</Badge>
+            <p className="text-lg text-center text-blue-100 leading-8 select-none whitespace-pre-line">
+              {card.back}
+            </p>
+            <span className="absolute bottom-4 text-xs text-blue-300/60 select-none">
+              Click card to show question
+            </span>
+          </Card>
+        </div>
+      </div>
+      
+      <div className="flex items-center gap-6">
+        <Button
+          variant="outline"
+          disabled={index === 0}
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsFlipped(false);
+            setTimeout(() => setIndex(index - 1), 150);
+          }}
+        >
+          Previous
+        </Button>
+        <span className="text-sm font-medium text-zinc-400">
+          Card {index + 1} of {cards.length}
+        </span>
+        <Button
+          variant="outline"
+          disabled={index === cards.length - 1}
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsFlipped(false);
+            setTimeout(() => setIndex(index + 1), 150);
+          }}
+        >
+          Next
+        </Button>
+      </div>
     </div>
   );
 }
@@ -529,6 +750,34 @@ function LessonContent({
   course: GeneratedCourse;
   phase?: CoursePhase;
 }) {
+  if (item?.type === 'study-guide') {
+    return (
+      <div className="mt-6 border-t border-white/5 pt-6">
+        <MarkdownViewer content={item.content} />
+      </div>
+    );
+  }
+
+  if (item?.type === 'hands-on-lab') {
+    return (
+      <div className="mt-6 border-t border-white/5 pt-6">
+        <MarkdownViewer content={item.content} />
+      </div>
+    );
+  }
+
+  if (item?.type === 'cheat-sheet') {
+    return (
+      <div className="mt-6 border-t border-white/5 pt-6">
+        <MarkdownViewer content={item.content} />
+      </div>
+    );
+  }
+
+  if (item?.type === 'flashcards') {
+    return <FlashcardDeck cards={item.cards} />;
+  }
+
   if (item?.type === 'practice') {
     return (
       <div className="mt-8 space-y-4">
@@ -944,12 +1193,16 @@ function Metric({
 }
 
 function ItemIcon({ item }: { item: CourseItem }) {
-  if (item.type === 'summary') return <LayoutPanelLeft className="mt-0.5 size-4 shrink-0" />;
-  if (item.type === 'practice') return <Code2 className="mt-0.5 size-4 shrink-0" />;
-  if (item.type === 'quiz') return <Target className="mt-0.5 size-4 shrink-0" />;
-  if (item.resource.kind === 'youtube') return <PlayCircle className="mt-0.5 size-4 shrink-0" />;
-  if (item.resource.kind === 'github') return <Github className="mt-0.5 size-4 shrink-0" />;
-  return <FileText className="mt-0.5 size-4 shrink-0" />;
+  if (item.type === 'summary') return <LayoutPanelLeft className="mt-0.5 size-4 shrink-0 text-zinc-400" />;
+  if (item.type === 'study-guide') return <BookOpen className="mt-0.5 size-4 shrink-0 text-amber-400 animate-pulse" />;
+  if (item.type === 'hands-on-lab') return <Code2 className="mt-0.5 size-4 shrink-0 text-emerald-400" />;
+  if (item.type === 'cheat-sheet') return <FileText className="mt-0.5 size-4 shrink-0 text-blue-400" />;
+  if (item.type === 'flashcards') return <Sparkles className="mt-0.5 size-4 shrink-0 text-violet-400" />;
+  if (item.type === 'practice') return <Code2 className="mt-0.5 size-4 shrink-0 text-zinc-400" />;
+  if (item.type === 'quiz') return <Target className="mt-0.5 size-4 shrink-0 text-zinc-400" />;
+  if (item.resource.kind === 'youtube') return <PlayCircle className="mt-0.5 size-4 shrink-0 text-red-400" />;
+  if (item.resource.kind === 'github') return <Github className="mt-0.5 size-4 shrink-0 text-zinc-300" />;
+  return <FileText className="mt-0.5 size-4 shrink-0 text-zinc-400" />;
 }
 
 function buildCourseItems(phase?: CoursePhase): CourseItem[] {
@@ -959,7 +1212,7 @@ function buildCourseItems(phase?: CoursePhase): CourseItem[] {
   const practice = [...(phase.exercises ?? []), ...(phase.miniProjects ?? [])];
   const quizLines = (phase.quizzes ?? []).map((quiz) => `${quiz.question} Answer: ${quiz.answer}`);
 
-  return [
+  const items: CourseItem[] = [
     {
       type: 'summary',
       title: phase.title,
@@ -970,6 +1223,45 @@ function buildCourseItems(phase?: CoursePhase): CourseItem[] {
         ...(phase.learningObjectives ?? []).map((objective) => `Goal: ${objective}`),
       ],
     },
+  ];
+
+  if (phase.studyGuide) {
+    items.push({
+      type: 'study-guide',
+      title: 'Module Study Guide',
+      detail: 'Deep dive technical text and design lessons',
+      content: phase.studyGuide,
+    });
+  }
+
+  if (phase.handsOnLab) {
+    items.push({
+      type: 'hands-on-lab',
+      title: 'Hands-on Coding Lab',
+      detail: 'Step-by-step lab tasks and boilerplates',
+      content: phase.handsOnLab,
+    });
+  }
+
+  if (phase.cheatSheet) {
+    items.push({
+      type: 'cheat-sheet',
+      title: 'Quick Reference Cheat Sheet',
+      detail: 'APIs, commands, and shortcuts reference',
+      content: phase.cheatSheet,
+    });
+  }
+
+  if (phase.flashcards && phase.flashcards.length) {
+    items.push({
+      type: 'flashcards',
+      title: 'Interactive Flashcards',
+      detail: `${phase.flashcards.length} smart Q&A flipcards`,
+      cards: phase.flashcards,
+    });
+  }
+
+  items.push(
     ...resources.map(
       (resource): CourseItem => ({
         type: 'resource',
@@ -977,7 +1269,10 @@ function buildCourseItems(phase?: CoursePhase): CourseItem[] {
         detail: `${resource.source} · ${resource.freshnessRelevance}`,
         resource,
       })
-    ),
+    )
+  );
+
+  items.push(
     {
       type: 'practice',
       title: 'Practice tasks',
@@ -993,8 +1288,10 @@ function buildCourseItems(phase?: CoursePhase): CourseItem[] {
       content: quizLines.length
         ? quizLines
         : ['Explain the module in your own words and list one mistake you can now avoid.'],
-    },
-  ];
+    }
+  );
+
+  return items;
 }
 
 function phaseResources(phase: CoursePhase): CourseResource[] {

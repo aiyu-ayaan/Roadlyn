@@ -28,6 +28,8 @@ const similarityInputSchema = z.object({
 const generateSchema = similarityInputSchema.extend({
   moduleCount: z.number().int().min(4).max(6).default(6),
   courseDepth: z.enum(['standard', 'full-length', 'masterclass']).default('masterclass'),
+  careerGoal: z.string().optional(),
+  industryContext: z.string().optional(),
   generationOptions: z
     .object({
       liveSearch: z.boolean().default(true),
@@ -66,6 +68,7 @@ interface PhaseResourceState {
 interface AgentCourseBundle {
   curriculum: unknown;
   portfolio: unknown;
+  sme?: unknown;
   result: AIGenerateResult;
 }
 
@@ -914,24 +917,42 @@ async function generateCourseWithAgents(input: {
   input: GenerateInput;
   researchedResources: ResearchResource[];
 }): Promise<AgentCourseBundle> {
-  const [curriculum, portfolio] = await Promise.all([
-    generateAgentWithRetries({
-      ...input,
-      operation: 'roadmap.agent.curriculum',
-      prompt: buildCurriculumAgentPrompt(input.input, input.researchedResources),
-    }),
-    generateAgentWithRetries({
-      ...input,
-      operation: 'roadmap.agent.portfolio',
-      prompt: buildPortfolioAgentPrompt(input.input, input.researchedResources),
-    }),
-  ]);
+  // Stage 1: Curriculum Architect
+  const curriculum = await generateAgentWithRetries({
+    ...input,
+    operation: 'roadmap.agent.curriculum',
+    prompt: buildCurriculumAgentPrompt(input.input, input.researchedResources),
+  });
   const curriculumJson = extractJson(curriculum.text);
+
+  // Stage 2: Portfolio & Lab Engineer (Chained context!)
+  const portfolio = await generateAgentWithRetries({
+    ...input,
+    operation: 'roadmap.agent.portfolio',
+    prompt: buildPortfolioAgentPrompt(input.input, input.researchedResources, curriculumJson),
+  });
   const portfolioJson = extractJson(portfolio.text);
 
+  // Stage 3: SME Detailed Content Writer (Chained context!)
+  const sme = await generateAgentWithRetries({
+    ...input,
+    operation: 'roadmap.agent.sme',
+    prompt: buildSMEWriterPrompt(input.input, input.researchedResources, curriculumJson),
+  });
+  const smeJson = extractJson(sme.text);
+
+  // Stage 4: QA/Review Agent (Validate and integrate final bundle)
+  const qa = await generateAgentWithRetries({
+    ...input,
+    operation: 'roadmap.agent.qa',
+    prompt: buildQAReviewPrompt(input.input, curriculumJson, portfolioJson, smeJson),
+  });
+  const qaJson = extractJson(qa.text);
+
   return {
-    curriculum: curriculumJson,
-    portfolio: portfolioJson,
+    curriculum: qaJson?.curriculum ?? curriculumJson,
+    portfolio: qaJson?.portfolio ?? portfolioJson,
+    sme: qaJson?.sme ?? smeJson,
     result: curriculum,
   };
 }
@@ -1250,11 +1271,12 @@ function buildCurriculumAgentPrompt(input: GenerateInput, researchedResources: R
   });
 }
 
-function buildPortfolioAgentPrompt(input: GenerateInput, researchedResources: ResearchResource[]) {
+function buildPortfolioAgentPrompt(input: GenerateInput, researchedResources: ResearchResource[], curriculumJson: unknown) {
   return JSON.stringify({
     agent: 'Portfolio, assessment, and interview coach',
-    task: 'Create the projects, milestones, certifications, interview prep, and recommended tools for the course.',
+    task: 'Create the projects, milestones, certifications, interview prep, and recommended tools for the course, aligning them perfectly with the supplied curriculum outline.',
     input: buildPromptInput(input),
+    suppliedCurriculumOutline: curriculumJson,
     liveResearchResources: researchedResources,
     requiredOutputShape: {
       projects: [
@@ -1280,7 +1302,7 @@ function buildPortfolioAgentPrompt(input: GenerateInput, researchedResources: Re
       milestones: [{ week: '', outcome: '', checkpoint: '' }],
     },
     qualityRules: [
-      'Create 4-6 substantial projects that map to the 4-6 modules, including one capstone.',
+      'Create 4-6 substantial projects that map directly to the 4-6 phases of the supplied curriculum outline, including one capstone.',
       'Each project must include 5-8 deliverables and a realistic professional scenario.',
       'Create milestones for the whole full-length course, not just a short crash course.',
       'Create interview prep with 5-8 concepts and 8-12 practical questions per topic.',
@@ -1288,6 +1310,78 @@ function buildPortfolioAgentPrompt(input: GenerateInput, researchedResources: Re
       'Select and suggest recommended tools that are modern, widely accepted, and explicitly found in the liveResearchResources or official docs.',
       'Milestones should feel logical, and checkpoints must outline concrete, measurable deliverables corresponding directly to the portfolio projects.',
       'Return strict JSON only.',
+    ],
+  });
+}
+
+function buildSMEWriterPrompt(input: GenerateInput, researchedResources: ResearchResource[], curriculumJson: unknown) {
+  const curriculum = asRecord(curriculumJson);
+  const phases = Array.isArray(curriculum?.phases) ? curriculum.phases : [];
+  const phaseOutlines = phases.map((p, i) => {
+    const pRecord = asRecord(p);
+    return {
+      phaseNumber: i + 1,
+      title: typeof pRecord?.title === 'string' ? pRecord.title : `Module ${i + 1}`,
+      description: typeof pRecord?.description === 'string' ? pRecord.description : '',
+    };
+  });
+
+  return JSON.stringify({
+    agent: 'Subject Matter Expert Content Writer',
+    task: 'Generate textbook-grade Study Guides, comprehensive Hands-on Labs with boilerplates, Cheatsheets, and Flashcard sets for each module of the course.',
+    input: {
+      topic: input.topic,
+      experienceLevel: input.experienceLevel || 'beginner',
+      careerGoal: input.careerGoal || 'Become practical and job-ready',
+      industryContext: input.industryContext || 'General Technology',
+    },
+    liveResearchResources: researchedResources,
+    phaseOutlines,
+    requiredOutputShape: {
+      phases: phaseOutlines.map((p) => ({
+        phaseNumber: p.phaseNumber,
+        title: p.title,
+        studyGuide: 'Textbook-grade markdown guide explaining the core concepts of this module in detail (at least 400-600 words), using professional developer terminology and explaining syntax/APIs.',
+        handsOnLab: 'Step-by-step practical laboratory exercise in markdown. Must include: 1. Setup Instructions, 2. Complete Code Boilerplate Template, 3. Step-by-Step Task Checklist, and 4. Troubleshooting tips. Make the tasks extremely detailed.',
+        cheatSheet: 'Quick reference markdown cheat sheet listing important commands, configuration options, key design constraints, and quick tips for this module.',
+        flashcards: [
+          {
+            front: 'Concept question or code snippet prompt (e.g., "What is the Big-O complexity of X?")',
+            back: 'Concise explanation or correct code snippet (e.g., "O(1) because...")',
+          },
+        ],
+      })),
+    },
+    qualityRules: [
+      'Every studyGuide, handsOnLab, and cheatSheet must contain actual complete markdown formatting (headings, code blocks, bold text, bullet points).',
+      'Never write placeholders; placeholders like "todo" or "write code here" are UNACCEPTABLE.',
+      'Hands-on labs must include actual, complete code boilerplate templates that are fully functional.',
+      'Create exactly 5-8 highly effective flashcards per module.',
+      'Incorporate the careerGoal and industryContext parameters directly to make the study guide and labs highly industry-specific.',
+      'Return strict JSON only.',
+    ],
+  });
+}
+
+function buildQAReviewPrompt(
+  input: GenerateInput,
+  curriculumJson: unknown,
+  portfolioJson: unknown,
+  smeJson: unknown
+) {
+  return JSON.stringify({
+    agent: 'Quality Assurance Review Agent',
+    task: 'Verify, format, and synthesize the combined outputs of the previous stages into a unified, high-quality course payload.',
+    originalInput: input,
+    curriculum: curriculumJson,
+    portfolio: portfolioJson,
+    sme: smeJson,
+    qualityRules: [
+      'Validate the structural integrity of the final curriculum, projects, and study guides.',
+      'Ensure there are no broken markdown tags or partial JSON objects.',
+      'Ensure all resource links map correctly across components.',
+      'Output a single unified course structure combining curriculum, portfolio, and SME study guides perfectly.',
+      'Return strict JSON only in the following schema: { curriculum: {...}, portfolio: {...}, sme: {...} }.',
     ],
   });
 }
@@ -1308,6 +1402,27 @@ function buildPromptInput(input: GenerateInput) {
 function composeCourseFromAgentBundle(bundle: AgentCourseBundle) {
   const curriculum = asRecord(bundle.curriculum);
   const portfolio = asRecord(bundle.portfolio);
+  const sme = asRecord(bundle.sme);
+
+  const rawPhases = curriculum && 'phases' in curriculum && Array.isArray(curriculum.phases) ? curriculum.phases : null;
+  let phases = rawPhases;
+
+  if (Array.isArray(rawPhases) && sme && 'phases' in sme && Array.isArray(sme.phases)) {
+    phases = rawPhases.map((phase, idx) => {
+      const pRecord = asRecord(phase);
+      const sRecord = asRecord((sme.phases as unknown[])[idx]);
+      if (pRecord && sRecord) {
+        return {
+          ...pRecord,
+          studyGuide: 'studyGuide' in sRecord ? sRecord.studyGuide : undefined,
+          handsOnLab: 'handsOnLab' in sRecord ? sRecord.handsOnLab : undefined,
+          cheatSheet: 'cheatSheet' in sRecord ? sRecord.cheatSheet : undefined,
+          flashcards: 'flashcards' in sRecord ? sRecord.flashcards : undefined,
+        };
+      }
+      return phase;
+    });
+  }
 
   return {
     title: curriculum?.title,
@@ -1316,7 +1431,7 @@ function composeCourseFromAgentBundle(bundle: AgentCourseBundle) {
     estimatedDuration: curriculum?.estimatedDuration,
     skillLevel: curriculum?.skillLevel,
     skillOutcomes: curriculum?.skillOutcomes,
-    phases: curriculum?.phases,
+    phases,
     projects: portfolio?.projects,
     resources: portfolio?.resources,
     interviewPrep: portfolio?.interviewPrep,
@@ -1368,7 +1483,7 @@ function normalizeGeneratedCourse(
     milestones: recordArray(record.milestones).length ? record.milestones : fallback.milestones,
     generationMetadata: {
       strategy: 'multi-agent',
-      agentPasses: ['curriculum', 'portfolio'],
+      agentPasses: ['curriculum', 'portfolio', 'sme', 'qa'],
       moduleCount: phases.length,
       courseDepth: input.courseDepth,
     },
@@ -1422,6 +1537,10 @@ function normalizePhase(
     lessonNotes: stringArray(phase.lessonNotes, fallback.lessonNotes).slice(0, 16),
     recap: readString(phase.recap, fallback.recap),
     difficultyLevel: readString(phase.difficultyLevel, fallback.difficultyLevel),
+    studyGuide: typeof phase.studyGuide === 'string' && phase.studyGuide.trim() ? phase.studyGuide : fallback.studyGuide,
+    handsOnLab: typeof phase.handsOnLab === 'string' && phase.handsOnLab.trim() ? phase.handsOnLab : fallback.handsOnLab,
+    cheatSheet: typeof phase.cheatSheet === 'string' && phase.cheatSheet.trim() ? phase.cheatSheet : fallback.cheatSheet,
+    flashcards: Array.isArray(phase.flashcards) && phase.flashcards.length ? phase.flashcards : fallback.flashcards,
   };
 }
 
@@ -1968,5 +2087,12 @@ function buildFallbackPhase(
     ],
     recap: `By the end of ${title.toLowerCase()}, you should be able to explain the key ideas, use the linked resources without hand-holding, and produce a small proof of work.`,
     difficultyLevel,
+    studyGuide: `# Study Guide: ${title}\n\n## Overview\n${description}\n\n### Core Theoretical Foundations\nTo master this module, focus on standard conceptual paradigms and design patterns. Implement solid modular abstractions, keep functions side-effect free, and follow proper structural naming standards.\n\n### Architectural Layout\nWhen deploying, construct clear boundary models, define appropriate validation layers, and implement logging checkpoints to capture exceptions early.`,
+    handsOnLab: `# Hands-on Lab: ${title} Workspace\n\n## Setup Instructions\n1. Ensure you have Node.js or the query environment installed.\n2. Open your shell or code workspace.\n\n## Complete Code Boilerplate Template\n\`\`\`javascript\n// Boilerplate template for ${title}\nfunction runWorkspace() {\n  console.log("Roadlyn Unified SaaS Lab Active!");\n  // TODO: Implement custom core feature\n}\nrunWorkspace();\n\`\`\`\n\n## Step-by-Step Task Checklist\n- [ ] Initialize the workspace template.\n- [ ] Complete the TODO implementation.\n- [ ] Verify core assertions work cleanly.`,
+    cheatSheet: `# Cheat Sheet: ${title}\n\n- **Verify Environment**: Check standard environment configurations.\n- **Bootstrap Script**: Run dev scripts using normal commands.\n- **Key Constraint**: Keep state changes fully documented.`,
+    flashcards: [
+      { front: `What is the core target of ${title}?`, back: `To build capabilities around: ${description}` },
+      { front: 'How can we test our progress?', back: 'By completing exercises and validating the code boilerplate.' }
+    ],
   };
 }

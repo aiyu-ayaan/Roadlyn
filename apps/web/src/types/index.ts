@@ -381,6 +381,13 @@ export interface CoursePhase {
   lessonNotes?: string[];
   recap?: string;
   difficultyLevel: 'beginner' | 'intermediate' | 'advanced' | string;
+  studyGuide?: string;
+  handsOnLab?: string;
+  cheatSheet?: string;
+  flashcards?: Array<{
+    front: string;
+    back: string;
+  }>;
 }
 
 export interface CourseProject {
